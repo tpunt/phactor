@@ -1,0 +1,922 @@
+/*
+  +----------------------------------------------------------------------+
+  | PHP Version 7                                                        |
+  +----------------------------------------------------------------------+
+  | Copyright (c) 1997-2016 The PHP Group                                |
+  +----------------------------------------------------------------------+
+  | This source file is subject to version 3.01 of the PHP license,      |
+  | that is bundled with this package in the file LICENSE, and is        |
+  | available through the world-wide-web at the following url:           |
+  | http://www.php.net/license/3_01.txt                                  |
+  | If you did not receive a copy of the PHP license and are unable to   |
+  | obtain it through the world-wide-web, please send a note to          |
+  | license@php.net so we can mail you a copy immediately.               |
+  +----------------------------------------------------------------------+
+  | Author:                                                              |
+  +----------------------------------------------------------------------+
+*/
+
+/* $Id$ */
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#include "php_phactor.h"
+#include "ph_prop_store.h"
+#include "ph_debug.h"
+
+#ifndef ZTS
+# error "Zend Thread Safetfy (ZTS) mode is required"
+#endif
+
+#if !defined(ZEND_ENABLE_STATIC_TSRMLS_CACHE) || !ZEND_ENABLE_STATIC_TSRMLS_CACHE
+# error "TSRMLS static cache is required"
+#endif
+
+ZEND_DECLARE_MODULE_GLOBALS(phactor)
+
+void *scheduler();
+void process_message(task_t *task);
+void enqueue_task(task_t *task);
+task_t *dequeue_task(void);
+void get_actor_ref_from_object_handle(char *ref, int handle);
+zval* zend_call_user_method(zend_object object, zval *retval_ptr, zval *from_actor, zval *message);
+actor_t *get_actor_from_ref(ph_string_t *actor_ref);
+actor_t *get_actor_from_object(zend_object *actor_obj);
+actor_t *get_actor_from_zval(zval *actor_zval_obj);
+task_t *create_send_message_task(int from_actor_handle, char *to_actor_ref, zval *message);
+task_t *create_process_message_task(actor_t *for_actor);
+zend_object* phactor_actor_ctor(zend_class_entry *entry);
+void delete_actor(void *actor);
+void add_new_actor(actor_t *new_actor);
+message_t *create_new_message(ph_string_t *from_actor_ref, zval *message);
+void send_message(task_t *task);
+void send_local_message(actor_t *to_actor, task_t *task);
+void send_remote_message(task_t *task);
+void initialise_actor_system();
+
+#define ACTOR_REF_LEN 33
+
+thread_t main_thread;
+pthread_mutex_t phactor_mutex;
+pthread_mutex_t phactor_task_mutex;
+pthread_mutex_t phactor_actors_mutex;
+actor_system_t *actor_system;
+int php_shutdown = 0;
+dtor_func_t (default_resource_dtor);
+zend_object_handlers phactor_actor_handlers;
+zend_object_handlers phactor_actor_system_handlers;
+void ***phactor_instance = NULL;
+
+zend_class_entry *ActorSystem_ce;
+zend_class_entry *Actor_ce;
+
+void *worker_function(thread_t *phactor_thread)
+{
+	phactor_thread->id = (ulong) pthread_self();
+	phactor_thread->ls = ts_resource(0);
+
+	TSRMLS_CACHE_UPDATE();
+
+	SG(server_context) = PHACTOR_SG(PHACTOR_G(main_thread).ls, server_context);
+	SG(sapi_started) = 0;
+
+	PG(expose_php) = 0;
+	PG(auto_globals_jit) = 0;
+
+	php_request_startup();
+
+	copy_execution_context();
+
+	pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
+	++PHACTOR_G(actor_system)->prepared_thread_count;
+	pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+
+	while (1) {
+		task_t *current_task = dequeue_task();
+
+		if (!current_task) {
+			pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
+			if (PHACTOR_G(php_shutdown)) {
+				pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+				break;
+			}
+			pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+			continue;
+		}
+
+		switch (current_task->task_type) {
+			case SEND_MESSAGE_TASK:
+				send_message(current_task);
+				break;
+			case PROCESS_MESSAGE_TASK:
+				process_message(current_task);
+				break;
+		}
+
+		free(current_task);
+	}
+
+	// zend_hash_apply(&EG(regular_list), pthreads_resources_cleanup); // ignore resource for now
+
+	PG(report_memleaks) = 0;
+
+	// block here until all other threads have finished executing? This will prevent
+	// prematurely freeing actors that are still be executed by other threads
+
+	// free all actors associated with this interpreter instance
+
+	php_request_shutdown(NULL);
+
+	ts_free_thread();
+
+	pthread_exit(NULL);
+}
+
+void process_message(task_t *task)
+{
+	actor_t *for_actor = task->task.pmt.for_actor;
+
+	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+	message_t *message = for_actor->mailbox;
+	for_actor->mailbox = for_actor->mailbox->next_message;
+	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
+	zval *return_value = emalloc(sizeof(zval));
+	zval *from_actor_zval = emalloc(sizeof(zval));
+
+	ZVAL_NULL(return_value);
+	ZVAL_STR(from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
+
+	// ++GC_REFCOUNT(&get_actor_from_ref(&message->from_actor_ref)->obj);
+
+	zend_call_user_method(for_actor->obj, return_value, from_actor_zval, message->message);
+
+	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+	for_actor->in_execution = 0;
+	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
+	free(PH_STRV(message->from_actor_ref));
+	zval_ptr_dtor(message->message);
+	free(message->message);
+	free(message);
+
+	zval_ptr_dtor(from_actor_zval);
+	efree(from_actor_zval);
+	efree(return_value); // @todo remove this line (return the value instead? Or store it elsewhere?)
+}
+
+void send_message(task_t *task)
+{
+	actor_t *to_actor = get_actor_from_ref(&task->task.smt.to_actor_ref);
+
+	if (to_actor) {
+		send_local_message(to_actor, task);
+	} else {
+		send_remote_message(task);
+	}
+
+	free(PH_STRV(task->task.smt.to_actor_ref));
+}
+
+/*
+Add the message (containing the from_actor and message) to the to_actor's mailbox.
+Enqueue the to_actor as a new task to have its mailbox processed.
+*/
+void send_local_message(actor_t *to_actor, task_t *task)
+{
+	message_t *new_message = create_new_message(&task->task.smt.from_actor_ref, task->task.smt.message);
+
+	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+
+	message_t *current_message = to_actor->mailbox;
+
+	if (!current_message) {
+		to_actor->mailbox = new_message;
+	} else {
+		while (current_message->next_message) {
+			current_message = current_message->next_message;
+		}
+
+		current_message->next_message = new_message;
+	}
+
+	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
+	enqueue_task(create_process_message_task(to_actor));
+}
+
+void send_remote_message(task_t *task)
+{
+	// @todo debugging purposes only - no implementation yet
+	printf("Tried to send a message to a non-existent (or remote) actor\n");
+	assert(0);
+}
+
+task_t *create_send_message_task(int from_actor_handle, char *to_actor_ref, zval *message)
+{
+	task_t *new_task = malloc(sizeof(task_t));
+
+	new_task->task_type = SEND_MESSAGE_TASK;
+	new_task->next_task = NULL;
+	PH_STRV(new_task->task.smt.from_actor_ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
+	PH_STRL(new_task->task.smt.from_actor_ref) = ACTOR_REF_LEN;
+	get_actor_ref_from_object_handle(PH_STRV(new_task->task.smt.from_actor_ref), from_actor_handle);
+	PH_STRV(new_task->task.smt.to_actor_ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
+	PH_STRL(new_task->task.smt.to_actor_ref) = ACTOR_REF_LEN;
+	memcpy(PH_STRV(new_task->task.smt.to_actor_ref), to_actor_ref, ACTOR_REF_LEN);
+	new_task->task.smt.message = malloc(sizeof(zval));
+
+	// @todo causes mem leaks with string or array (1 for array itself, 1 for each string/var)
+	// this needs changing over to use a custom storage system
+	if (Z_TYPE_P(message) == IS_OBJECT) {
+		ZVAL_DUP(new_task->task.smt.message, message);
+	} else {
+		ZVAL_COPY(new_task->task.smt.message, message);
+	}
+
+	// ++GC_REFCOUNT(Z_COUNTED_P(new_task->task.smt.message)); // only for ZVAL_DUP - needed anymore?
+
+	return new_task;
+}
+
+message_t *create_new_message(ph_string_t *from_actor_ref, zval *message)
+{
+	message_t *new_message = malloc(sizeof(message_t));
+
+	PH_STRL(new_message->from_actor_ref) = PH_STRL_P(from_actor_ref);
+	PH_STRV(new_message->from_actor_ref) = PH_STRV_P(from_actor_ref);
+	new_message->message = message;
+	new_message->next_message = NULL;
+
+	return new_message;
+}
+
+task_t *create_process_message_task(actor_t *for_actor)
+{
+	task_t *new_task = malloc(sizeof(task_t));
+
+	new_task->task.pmt.for_actor = for_actor;
+	new_task->task_type = PROCESS_MESSAGE_TASK;
+	new_task->next_task = NULL;
+
+	return new_task;
+}
+
+void enqueue_task(task_t *new_task)
+{
+	pthread_mutex_lock(&PHACTOR_G(phactor_task_mutex));
+
+	task_t *current_task = PHACTOR_G(actor_system)->tasks;
+
+	if (!current_task) {
+		PHACTOR_G(actor_system)->tasks = new_task;
+	} else {
+		while (current_task->next_task) {
+			current_task = current_task->next_task;
+		}
+
+		current_task->next_task = new_task;
+	}
+
+	pthread_mutex_unlock(&PHACTOR_G(phactor_task_mutex));
+}
+
+task_t *dequeue_task(void)
+{
+	pthread_mutex_lock(&PHACTOR_G(phactor_task_mutex));
+
+	task_t *task = PHACTOR_G(actor_system)->tasks;
+	task_t *prev_task = task;
+
+	if (!task) {
+		pthread_mutex_unlock(&PHACTOR_G(phactor_task_mutex));
+		return NULL;
+	}
+
+	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+	if (task->task_type & SEND_MESSAGE_TASK || !task->task.pmt.for_actor->in_execution) {
+		if (task->task_type & PROCESS_MESSAGE_TASK) {
+			task->task.pmt.for_actor->in_execution = 1;
+		}
+		pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
+		PHACTOR_G(actor_system)->tasks = task->next_task;
+
+		pthread_mutex_unlock(&PHACTOR_G(phactor_task_mutex));
+		return task;
+	}
+	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
+	while (1) {
+		if (!task) {
+			break;
+		}
+
+		if (task->task_type & SEND_MESSAGE_TASK) {
+			break;
+		}
+
+		pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+		if (!task->task.pmt.for_actor->in_execution) {
+			task->task.pmt.for_actor->in_execution = 1;
+			pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+			break;
+		}
+		pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
+		prev_task = task;
+		task = task->next_task;
+	}
+
+	if (task) {
+		prev_task->next_task = task->next_task;
+	}
+
+	pthread_mutex_unlock(&PHACTOR_G(phactor_task_mutex));
+
+	return task;
+}
+
+zval* zend_call_user_method(zend_object object, zval *retval_ptr, zval *from_actor, zval *message)
+{
+	int result;
+	zend_fcall_info fci;
+	zend_fcall_info_cache fcc;
+	zend_function *receive_function;
+	zend_string *receive_function_name;
+	zval params[2];
+
+	ZVAL_COPY_VALUE(&params[0], from_actor);
+	ZVAL_COPY_VALUE(&params[1], message);
+
+	// receive_function_name = zend_string_init(ZEND_STRL("receive"), 0);
+	// receive_function = zend_hash_find_ptr(&object.ce->function_table, receive_function_name); // @todo hashtable consistency problems...
+
+	fci.size = sizeof(fci);
+	fci.object = &object;
+	fci.retval = retval_ptr;
+	fci.param_count = 2;
+	fci.params = params;
+	fci.no_separation = 1;
+	ZVAL_STRINGL(&fci.function_name, "receive", sizeof("receive")-1);
+
+	// fcc.initialized = 1;
+	// fcc.object = &object;
+	// fcc.calling_scope = object.ce;
+	// fcc.called_scope = object.ce;
+	// fcc.function_handler = receive_function;
+
+	result = zend_call_function(&fci, NULL);
+
+	if (result == FAILURE) { /* error at c-level */
+		if (!EG(exception)) {
+			zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object.ce->name), "::", receive_function_name);
+		}
+	}
+
+	zval_ptr_dtor(&fci.function_name);
+	// zend_string_free(receive_function_name);
+
+	return retval_ptr;
+}
+
+// @todo actually generate UUIDs for remote actors
+void get_actor_ref_from_object_handle(char *ref, int handle)
+{
+	sprintf(ref, "%022d%010d", 0, handle);
+}
+
+actor_t *get_actor_from_ref(ph_string_t *actor_ref)
+{
+	return ph_hashtable_search(&PHACTOR_G(actor_system)->actors, actor_ref);
+}
+
+actor_t *get_actor_from_object(zend_object *actor_obj)
+{
+	char actor_ref[33];
+	ph_string_t ar;
+
+	get_actor_ref_from_object_handle(actor_ref, actor_obj->handle);
+	ar.len = 33;
+	ar.val = actor_ref;
+
+	actor_t *actor = get_actor_from_ref(&ar);
+
+	// actor_t *actor = (actor_t *) ((char *) actor_obj - XtOffsetOf(actor_t, obj));
+
+	return actor;
+}
+
+actor_t *get_actor_from_zval(zval *actor_zval_obj)
+{
+	return get_actor_from_object(Z_OBJ_P(actor_zval_obj));
+}
+
+void initialise_actor_system()
+{
+	PHACTOR_G(actor_system)->tasks = NULL;
+	PHACTOR_G(actor_system)->thread_count = 1;//sysconf(_SC_NPROCESSORS_ONLN);
+
+	PHACTOR_G(main_thread).id = (ulong) pthread_self();
+	PHACTOR_G(main_thread).ls = TSRMLS_CACHE;
+	// main_thread.thread = tsrm_thread_id();
+
+	// taken from pthreads - @todo needed still?
+	if (Z_TYPE(EG(user_exception_handler)) != IS_UNDEF) {
+		if (Z_TYPE_P(&EG(user_exception_handler)) == IS_OBJECT) {
+			rebuild_object_properties(Z_OBJ_P(&EG(user_exception_handler)));
+		} else if (Z_TYPE_P(&EG(user_exception_handler)) == IS_ARRAY) {
+			zval *object = zend_hash_index_find(Z_ARRVAL_P(&EG(user_exception_handler)), 0);
+			if (object && Z_TYPE_P(object) == IS_OBJECT) {
+				rebuild_object_properties(Z_OBJ_P(object));
+			}
+		}
+	}
+
+	PHACTOR_G(actor_system)->worker_threads = malloc(sizeof(thread_t) * PHACTOR_G(actor_system)->thread_count);
+
+	for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
+		thread_t *thread = PHACTOR_G(actor_system)->worker_threads + i;
+
+		// pthread_mutex_init(&thread.mutex, NULL);
+		// pthread_cond_init(&thread.cond, NULL);
+		pthread_create((pthread_t *) thread, NULL, (void *) worker_function, thread);
+	}
+}
+
+void remove_actor(actor_t *target_actor)
+{
+	if (target_actor == NULL) { // remote actor
+		printf("Freeing remote actor\n"); // when will a remote actor actually be freed?
+		return;
+	}
+
+	pthread_mutex_lock(&phactor_actors_mutex);
+	ph_hashtable_delete(&PHACTOR_G(actor_system)->actors, &target_actor->ref, delete_actor);
+	pthread_mutex_unlock(&phactor_actors_mutex);
+}
+
+void remove_actor_object(zval *actor)
+{
+	remove_actor(get_actor_from_zval(actor));
+}
+
+void php_actor_dtor_object(zend_object *obj)
+{
+	printf("A RC: %d\n", GC_REFCOUNT(obj));
+	GC_REFCOUNT(obj) = 1; // correct GC count from actor_ctor
+	zend_objects_destroy_object(obj);
+	zend_object_std_dtor(obj);
+}
+
+void php_actor_free_object(zend_object *obj)
+{
+	actor_t *actor = get_actor_from_object(obj);
+
+	ph_hashtable_destroy(&actor->props, delete_store);
+
+	remove_actor(actor);
+}
+
+void delete_actor(void *actor_void)
+{
+	actor_t *actor = (actor_t *) actor_void;
+
+	free(PH_STRV(actor->ref));
+	efree(actor);
+}
+
+void php_actor_system_dtor_object(zend_object *obj)
+{
+	// don't do this. Each actor will already be destroyed separately later on (via php_actor_free_object)
+	// ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors, delete_actor);
+
+	zend_object_std_dtor(obj);
+
+	// ensure threads and other things are freed
+}
+
+void php_actor_system_free_object(zend_object *obj)
+{
+	free(PHACTOR_G(actor_system)->actors.values);
+	efree(PHACTOR_G(actor_system));
+}
+
+// @todo currently impossible with current ZE
+void receive_block(zval *actor_zval, zval *return_value)
+{
+	// actor_t *actor = get_actor_from_zval(actor_zval);
+
+	// zend_execute_data *execute_data = EG(current_execute_data);
+
+	// actor->state = zend_freeze_call_stack(EG(current_execute_data));
+	// actor->return_value = actor_zval; // tmp
+
+	// EG(current_execute_data) = NULL;
+
+	// return PHACTOR_ZG(current_message_value); // not the solution...
+}
+
+void force_shutdown_actor_system()
+{
+	pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
+	PHACTOR_G(php_shutdown) = 1;
+	pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+}
+
+void scheduler_blocking()
+{
+	pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
+	PHACTOR_G(php_shutdown) = !PHACTOR_G(actor_system)->daemonised_actor_system;
+	pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+
+	while (1) {
+		pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
+		if (PHACTOR_G(actor_system)->thread_count == PHACTOR_G(actor_system)->prepared_thread_count && PHACTOR_G(php_shutdown)) {
+			pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+			break;
+		}
+		pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+	}
+
+	for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
+		pthread_join(PHACTOR_G(actor_system)->worker_threads[i].thread, NULL);
+	}
+
+	free(PHACTOR_G(actor_system)->worker_threads);
+}
+
+
+
+ZEND_BEGIN_ARG_INFO(ActorSystem_construct_arginfo, 0)
+ZEND_ARG_INFO(0, flag)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO(ActorSystem_shutdown_arginfo, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO(ActorSystem_block_arginfo, 0)
+ZEND_END_ARG_INFO()
+
+
+ZEND_BEGIN_ARG_INFO_EX(Actor_send_arginfo, 0, 0, 2)
+	ZEND_ARG_INFO(0, actor)
+	ZEND_ARG_INFO(0, message)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO(Actor_remove_arginfo, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO(Actor_abstract_receive_arginfo, 0)
+    ZEND_ARG_INFO(0, sender)
+	ZEND_ARG_INFO(0, message)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO(Actor_abstract_receiveblock_arginfo, 0)
+ZEND_END_ARG_INFO()
+
+
+
+/* {{{ proto string ActorSystem::__construct() */
+PHP_METHOD(ActorSystem, __construct)
+{
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "|b", &PHACTOR_G(actor_system)->daemonised_actor_system) != SUCCESS) {
+		return;
+	}
+
+	if (PHACTOR_G(actor_system)->initialised) {
+		zend_throw_exception_ex(NULL, 0, "Actor system already active");
+	}
+
+    initialise_actor_system();
+}
+/* }}} */
+
+/* {{{ proto void ActorSystem::shutdown() */
+PHP_METHOD(ActorSystem, shutdown)
+{
+	if (zend_parse_parameters_none() != SUCCESS) {
+		return;
+	}
+
+    force_shutdown_actor_system();
+}
+/* }}} */
+
+/* {{{ proto void ActorSystem::block() */
+PHP_METHOD(ActorSystem, block)
+{
+	if (zend_parse_parameters_none() != SUCCESS) {
+		return;
+	}
+
+	scheduler_blocking();
+}
+/* }}} */
+
+
+/* {{{ proto string Actor::send(Actor|string $actor, mixed $message) */
+PHP_METHOD(Actor, send)
+{
+	char to_actor_ref[ACTOR_REF_LEN] = {'0'};
+	zval *to_actor;
+	zval *message;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "zz", &to_actor, &message) != SUCCESS) {
+		return;
+	}
+
+	// printf("-> %p\nsc %p\n", Z_OBJ(EX(This))->handle, )
+
+	if (Z_TYPE_P(to_actor) == IS_STRING) {
+		if (Z_STRLEN_P(to_actor) != ACTOR_REF_LEN) {
+			// zend_throw_exception_ex(NULL, )
+		}
+
+		memcpy(to_actor_ref, Z_STRVAL_P(to_actor), ACTOR_REF_LEN);
+	} else if (Z_TYPE_P(to_actor) == IS_OBJECT) {
+		if (!instanceof_function(Z_OBJCE_P(to_actor), Actor_ce)) {
+			// zend_throw_exception_ex(NULL, )
+		}
+
+		get_actor_ref_from_object_handle(to_actor_ref, Z_OBJ_P(to_actor)->handle);
+	} else {
+		// zend_throw_exception_ex(NULL, )
+	}
+
+    enqueue_task(create_send_message_task(Z_OBJ(EX(This))->handle, to_actor_ref, message));
+}
+/* }}} */
+
+/* {{{ proto string Actor::remove() */
+PHP_METHOD(Actor, remove)
+{
+	if (zend_parse_parameters_none() != SUCCESS) {
+		return;
+	}
+
+    remove_actor_object(getThis());
+}
+/* }}} */
+
+/* {{{ proto string Actor::receiveBlock() */
+PHP_METHOD(Actor, receiveBlock)
+{
+	if (zend_parse_parameters_none() != SUCCESS) {
+		return;
+	}
+
+    receive_block(getThis(), return_value);
+}
+/* }}} */
+
+
+
+/* {{{ */
+zend_function_entry ActorSystem_methods[] = {
+    PHP_ME(ActorSystem, __construct, ActorSystem_construct_arginfo, ZEND_ACC_PUBLIC)
+	PHP_ME(ActorSystem, shutdown, ActorSystem_shutdown_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ME(ActorSystem, block, ActorSystem_block_arginfo, ZEND_ACC_PUBLIC)
+	PHP_FE_END
+}; /* }}} */
+
+/* {{{ */
+zend_function_entry Actor_methods[] = {
+	PHP_ME(Actor, send, Actor_send_arginfo, ZEND_ACC_PROTECTED)
+    PHP_ME(Actor, remove, Actor_remove_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ABSTRACT_ME(Actor, receive, Actor_abstract_receive_arginfo)
+    PHP_ME(Actor, receiveBlock, Actor_abstract_receiveblock_arginfo, ZEND_ACC_PUBLIC)
+	PHP_FE_END
+}; /* }}} */
+
+
+
+zend_object* phactor_actor_ctor(zend_class_entry *entry)
+{
+    actor_t *new_actor = ecalloc(1, sizeof(actor_t) + zend_object_properties_size(entry));
+
+    new_actor->mailbox = NULL;
+    new_actor->state = NULL;
+	new_actor->in_execution = 0;
+
+    zend_object_std_init(&new_actor->obj, entry);
+    object_properties_init(&new_actor->obj, entry);
+
+    ++GC_REFCOUNT(&new_actor->obj); // needed for ephemeral actors
+
+    new_actor->obj.handlers = &phactor_actor_handlers;
+
+	PH_STRL(new_actor->ref) = ACTOR_REF_LEN;
+	PH_STRV(new_actor->ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
+
+	ph_hashtable_init(&new_actor->props, 8);
+
+    get_actor_ref_from_object_handle(PH_STRV(new_actor->ref), new_actor->obj.handle);
+
+    add_new_actor(new_actor);
+
+    return &new_actor->obj;
+}
+
+void add_new_actor(actor_t *new_actor)
+{
+	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+	ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
+	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+}
+
+static zend_object* phactor_actor_system_ctor(zend_class_entry *entry)
+{
+	if (!PHACTOR_G(actor_system)) {
+		PHACTOR_G(actor_system) = ecalloc(1, sizeof(actor_system_t) + zend_object_properties_size(entry));
+
+		// @todo create the UUID on actor creation - this is needed for remote actor systems only
+
+		ph_hashtable_init(&PHACTOR_G(actor_system)->actors, 8);
+
+		zend_object_std_init(&PHACTOR_G(actor_system)->obj, entry);
+		object_properties_init(&PHACTOR_G(actor_system)->obj, entry);
+
+		PHACTOR_G(actor_system)->obj.handlers = &phactor_actor_system_handlers;
+	}
+
+	return &PHACTOR_G(actor_system)->obj;
+}
+
+HashTable *phactor_actor_get_debug_info(zval *object, int *is_temp)
+{
+	// @todo
+    // return zend_std_get_properties(object);
+    return NULL;
+}
+
+HashTable *phactor_actor_get_properties(zval *actor_zval)
+{
+	zend_object *actor_obj = Z_OBJ_P(actor_zval);
+	actor_t *actor = get_actor_from_object(actor_obj);
+
+	rebuild_object_properties(actor_obj);
+
+	ph_store_hashtable_convert(actor_obj->properties, &actor->props);
+
+    return zend_std_get_properties(actor_zval);
+}
+
+void php_actor_write_property(zval *actor_zval, zval *member, zval *value, void **cache)
+{
+	actor_t *actor = get_actor_from_zval(actor_zval);
+
+	// @todo take into account __set
+
+	ph_store_add(&actor->props, Z_STR_P(member), value);
+
+	// _zend_hash_str_add(actor_obj->properties, b->key.val, b->key.len, &value ZEND_FILE_LINE_CC);
+	// rebuild_object_properties(&get_actor_from_object(Z_OBJ_P(object))->obj);
+}
+
+void php_actor_read_property(zval *actor_zval, zval *member, int type, void **cache, zval *rv)
+{
+	actor_t *actor = get_actor_from_zval(actor_zval);
+
+	ph_store_read(actor, Z_STR_P(member), &rv); // type?
+}
+
+/* {{{ PHP_MINIT_FUNCTION */
+PHP_MINIT_FUNCTION(phactor)
+{
+    zend_class_entry ce;
+    zend_object_handlers *zh = zend_get_std_object_handlers();
+
+    /* ActorSystem Class */
+    INIT_CLASS_ENTRY(ce, "ActorSystem", ActorSystem_methods);
+    ActorSystem_ce = zend_register_internal_class(&ce);
+    ActorSystem_ce->create_object = phactor_actor_system_ctor;
+
+    memcpy(&phactor_actor_system_handlers, zh, sizeof(zend_object_handlers));
+
+    phactor_actor_system_handlers.offset = XtOffsetOf(actor_system_t, obj);
+    phactor_actor_system_handlers.dtor_obj = php_actor_system_dtor_object;
+	phactor_actor_system_handlers.free_obj = php_actor_system_free_object;
+
+    /* Actor Class */
+    INIT_CLASS_ENTRY(ce, "Actor", Actor_methods);
+    Actor_ce = zend_register_internal_class(&ce);
+    Actor_ce->ce_flags |= ZEND_ACC_ABSTRACT;
+    Actor_ce->create_object = phactor_actor_ctor;
+
+    memcpy(&phactor_actor_handlers, zh, sizeof(zend_object_handlers));
+
+    phactor_actor_handlers.offset = XtOffsetOf(actor_t, obj);
+	phactor_actor_handlers.write_property = php_actor_write_property;
+    phactor_actor_handlers.dtor_obj = php_actor_dtor_object;
+    phactor_actor_handlers.free_obj = php_actor_free_object;
+    // phactor_actor_handlers.get_debug_info = phactor_actor_get_debug_info;
+    phactor_actor_handlers.get_properties = phactor_actor_get_properties;
+
+    PHACTOR_G(phactor_instance) = TSRMLS_CACHE;
+
+	pthread_mutex_init(&phactor_mutex, NULL);
+	pthread_mutex_init(&phactor_task_mutex, NULL);
+	pthread_mutex_init(&phactor_actors_mutex, NULL);
+
+    return SUCCESS;
+}
+/* }}} */
+
+/* {{{ PHP_MSHUTDOWN_FUNCTION */
+PHP_MSHUTDOWN_FUNCTION(phactor)
+{
+	pthread_mutex_destroy(&phactor_mutex);
+	pthread_mutex_destroy(&phactor_task_mutex);
+	pthread_mutex_destroy(&phactor_actors_mutex);
+
+	return SUCCESS;
+}
+/* }}} */
+
+/* {{{ PHP_RINIT_FUNCTION */
+PHP_RINIT_FUNCTION(phactor)
+{
+	TSRMLS_CACHE_UPDATE();
+
+	// zend_hash_init(&PHACTOR_ZG(symbol_tracker), 15, NULL, NULL, 0);
+
+	// @todo remove, not needed?
+    if (PHACTOR_G(phactor_instance) != TSRMLS_CACHE) {
+		if (memcmp(sapi_module.name, ZEND_STRL("cli")) == SUCCESS) {
+			sapi_module.deactivate = NULL;
+		}
+	}
+
+	return SUCCESS;
+}
+/* }}} */
+
+/* {{{ PHP_RSHUTDOWN_FUNCTION */
+PHP_RSHUTDOWN_FUNCTION(phactor)
+{
+    // zend_hash_destroy(&PHACTOR_ZG(symbol_tracker));
+
+	return SUCCESS;
+}
+/* }}} */
+
+/* {{{ PHP_MINFO_FUNCTION */
+PHP_MINFO_FUNCTION(phactor)
+{
+	php_info_print_table_start();
+	php_info_print_table_header(2, "phactor support", "enabled");
+	php_info_print_table_end();
+}
+/* }}} */
+
+PHP_GINIT_FUNCTION(phactor)
+{
+	// pthread_mutexattr_t at;
+	// pthread_mutexattr_init(&at);
+
+	// #if defined(PTHREAD_MUTEX_RECURSIVE) || defined(__FreeBSD__)
+	// pthread_mutexattr_settype(&at, PTHREAD_MUTEX_RECURSIVE);
+	// #else
+	// pthread_mutexattr_settype(&at, PTHREAD_MUTEX_RECURSIVE_NP);
+	// #endif
+
+	// pthread_mutex_init(&phactor_mutex, &at);
+
+    pthread_mutex_init(&phactor_mutex, NULL);
+	pthread_mutex_init(&phactor_task_mutex, NULL);
+	pthread_mutex_init(&phactor_actors_mutex, NULL);
+}
+
+PHP_GSHUTDOWN_FUNCTION(phactor)
+{
+	pthread_mutex_destroy(&phactor_mutex);
+	pthread_mutex_destroy(&phactor_task_mutex);
+	pthread_mutex_destroy(&phactor_actors_mutex);
+}
+
+/* {{{ phactor_module_entry */
+zend_module_entry phactor_module_entry = {
+	STANDARD_MODULE_HEADER,
+	"phactor",
+	NULL,
+	PHP_MINIT(phactor),
+	PHP_MSHUTDOWN(phactor),
+	PHP_RINIT(phactor),
+	PHP_RSHUTDOWN(phactor),
+	PHP_MINFO(phactor),
+	PHP_PHACTOR_VERSION,
+	NO_MODULE_GLOBALS, //PHP_MODULE_GLOBALS(phactor),
+	//NULL, //PHP_GINIT(phactor),
+	//NULL, //PHP_GSHUTDOWN(phactor),
+	NULL,
+	STANDARD_MODULE_PROPERTIES_EX
+};
+/* }}} */
+
+#ifdef COMPILE_DL_PHACTOR
+TSRMLS_CACHE_DEFINE()
+ZEND_GET_MODULE(phactor)
+#endif
