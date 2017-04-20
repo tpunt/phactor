@@ -114,6 +114,7 @@ typedef struct _actor_t {
     zend_execute_data *state;
     zend_bool in_execution;
     ph_hashtable_t props;
+    int thread_offset;
     zend_object obj;
 } actor_t;
 
@@ -139,8 +140,15 @@ typedef struct _task_t {
 typedef struct _thread_t {
     pthread_t thread; // must be first member
     zend_ulong id; // local storage ID used to fetch local storage data
+    int offset;
 	void*** ls; // pointer to local storage in TSRM
 } thread_t;
+
+typedef struct _actor_removal_t {
+	actor_t **actors;
+	int count;
+	int used;
+} actor_removal_t;
 
 typedef struct _actor_system_t {
     // char system_reference[10]; // @todo needed when remote actors are introduced
@@ -150,6 +158,7 @@ typedef struct _actor_system_t {
     int thread_count;
     int prepared_thread_count;
     thread_t *worker_threads;
+    actor_removal_t *actor_removals;
     zend_bool daemonised_actor_system;
     zend_object obj;
 } actor_system_t;

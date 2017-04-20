@@ -4,7 +4,7 @@ $actorSystem = new ActorSystem();
 
 class Test extends Actor
 {
-    // private $str = 'abc';
+    private $str = 'abc';
     // private $a = 1;
     // private $int = 1;
     // private $b;
@@ -28,7 +28,8 @@ class Test extends Actor
         // var_dump(self::A, self::B);
         // var_dump($this->t(), $this->a, $this->b, $this->c, $this->d, $this->int);
         // $a = new Test();
-        $this->send($sender, "{$this->str}: $msg");
+        $this->send($sender, "{$this->str}: $msg ({$this->a})");
+        $this->remove();
     }
 
     // private function t(){return 10;}
@@ -47,7 +48,8 @@ new class($a) extends Actor {
     public function receive($sender, $msg)
     {
         var_dump($msg);
+        $this->remove();
     }
 };
-
+for ($i = 0; $i < 10000000; ++$i);
 $actorSystem->block();
