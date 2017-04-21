@@ -63,7 +63,8 @@ void ph_store_read(actor_t *actor, zend_string *key, zval **rv)
     if (s) {
         ph_store_convert(*rv, s);
     } else {
-        // @todo
+        ZVAL_NULL(*rv);
+        printf("Undefined variable %s being read...\n", ZSTR_VAL(key));
     }
 }
 
@@ -78,7 +79,7 @@ static void ph_store_convert(zval *value, store_t *s)
 {
     switch (s->type) {
         case IS_STRING:
-            ZVAL_NEW_STR(value, s->val.string);
+            ZVAL_STR(value, zend_string_init(PH_STRV(STORE_STRING(s)), PH_STRL(STORE_STRING(s)), 0));
             break;
         case IS_LONG:
             ZVAL_LONG(value, s->val.integer);
@@ -101,7 +102,9 @@ static store_t *create_new_store(zval *value)
 
     switch (Z_TYPE_P(value)) {
         case IS_STRING:
-            STORE_STRING(s) = Z_STR_P(value); // @todo should be a copy of zend string
+            PH_STRL(STORE_STRING(s)) = ZSTR_LEN(Z_STR_P(value));
+            PH_STRV(STORE_STRING(s)) = malloc(sizeof(char) * PH_STRL(STORE_STRING(s)));
+            memcpy(PH_STRV(STORE_STRING(s)), ZSTR_VAL(Z_STR_P(value)), sizeof(char) * PH_STRL(STORE_STRING(s)));
             break;
         case IS_LONG:
             STORE_LONG(s) = Z_LVAL_P(value);

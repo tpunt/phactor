@@ -672,7 +672,6 @@ static zval *copy_def_prop_table(zval *old_default_prop_table, int prop_count)
 
     // @todo
     for (int i = 0; i < prop_count; ++i) {
-        // printf("Copying value: ");
         if (Z_REFCOUNTED(old_default_prop_table[i])) {
             switch (Z_TYPE(old_default_prop_table[i])) {
                 case IS_LONG:

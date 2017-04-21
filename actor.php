@@ -5,8 +5,8 @@ $actorSystem = new ActorSystem();
 class Test extends Actor
 {
     private $str = 'abc';
-    // private $a = 1;
-    // private $int = 1;
+    private $a = 1;
+    private $int = 1;
     // private $b;
 
     // const A = 1;
@@ -18,7 +18,7 @@ class Test extends Actor
         // $this->b = 2;
         // $this->c = 3;
         // $this->d = 4;
-        // $this->str = $str;
+        $this->str = $str;
     }
 
     public function receive($sender, $msg)
@@ -29,7 +29,7 @@ class Test extends Actor
         // var_dump($this->t(), $this->a, $this->b, $this->c, $this->d, $this->int);
         // $a = new Test();
         $this->send($sender, "{$this->str}: $msg ({$this->a})");
-        $this->remove();
+        // $this->remove();
     }
 
     // private function t(){return 10;}

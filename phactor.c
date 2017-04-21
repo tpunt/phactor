@@ -130,6 +130,10 @@ void *worker_function(thread_t *phactor_thread)
 
 	PG(report_memleaks) = 0;
 
+	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+	ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, delete_actor, actor_t *, thread_offset, thread_offset);
+	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
 	// block here until all other threads have finished executing? This will prevent
 	// prematurely freeing actors that are still be executed by other threads
 
@@ -351,7 +355,7 @@ zval* zend_call_user_method(zend_object object, zval *retval_ptr, zval *from_act
 {
 	int result;
 	zend_fcall_info fci;
-	zend_fcall_info_cache fcc;
+	// zend_fcall_info_cache fcc;
 	zend_function *receive_function;
 	zend_string *receive_function_name;
 	zval params[2];
@@ -485,7 +489,6 @@ void perform_actor_removals(void)
 	pthread_mutex_lock(&actor_removal_mutex);
 
 	for (int i = 0; i < ar->used; ++i) {
-		printf("%d) R: %s\n", thread_offset, PH_STRV(ar->actors[i]->ref));
 		remove_actor(ar->actors[i]);
 	}
 
@@ -541,6 +544,8 @@ void delete_actor(void *actor_void)
 
 	// GC_REFCOUNT(&actor->obj) = 0;
 
+	// php_actor_free_object(&actor->obj); // @todo for property store destruction
+
 	// php_actor_dtor_object(&actor->obj); // @todo works?
 
 	free(PH_STRV(actor->ref));
@@ -549,9 +554,6 @@ void delete_actor(void *actor_void)
 
 void php_actor_system_dtor_object(zend_object *obj)
 {
-	// don't do this. Each actor will already be destroyed separately later on (via php_actor_free_object)
-	// ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors, delete_actor);
-
 	zend_object_std_dtor(obj);
 
 	// ensure threads and other things are freed
@@ -559,6 +561,22 @@ void php_actor_system_dtor_object(zend_object *obj)
 
 void php_actor_system_free_object(zend_object *obj)
 {
+	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+	for (int i = 0; i < PHACTOR_G(actor_system)->actors.size; ++i) {
+		ph_bucket_t *b = PHACTOR_G(actor_system)->actors.values + i;
+
+		if (b->hash > 0) {
+			actor_t *actor = b->value;
+
+			if (actor->thread_offset == thread_offset) {
+				delete_actor(b->value);
+				free(PH_STRV(b->key));
+			}
+		}
+	}
+	// ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, delete_actor, actor_t *, thread_offset, thread_offset);
+	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
 	for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
 		free(PHACTOR_G(actor_system)->actor_removals[i].actors);
 	}
@@ -586,7 +604,7 @@ void receive_block(zval *actor_zval, zval *return_value)
 void force_shutdown_actor_system()
 {
 	pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
-	PHACTOR_G(php_shutdown) = 1;
+	PHACTOR_G(php_shutdown) = 1; // @todo this will not work, since worker threads may still be working
 	pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
 }
 
@@ -771,7 +789,11 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     zend_object_std_init(&new_actor->obj, entry);
     object_properties_init(&new_actor->obj, entry);
 
-    ++GC_REFCOUNT(&new_actor->obj); // needed for ephemeral actors
+	/*
+	The following prevents an actor that has been created and not used from being
+	instantly destroyed by the VM (given that it will be a TMP value).
+	*/
+    ++GC_REFCOUNT(&new_actor->obj);
 
     new_actor->obj.handlers = &phactor_actor_handlers;
 
@@ -780,9 +802,18 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
 
 	ph_hashtable_init(&new_actor->props, 8);
 
-    get_actor_ref_from_object_handle(PH_STRV(new_actor->ref), new_actor->obj.handle);
+	zend_string *key;
+    zend_property_info *value;
+	int i = 0;
 
-	printf("%d) A: %s\n", thread_offset, PH_STRV(new_actor->ref));
+    ZEND_HASH_FOREACH_STR_KEY_PTR(&entry->properties_info, key, value) {
+		// printf("Adding property %s with value ", ZSTR_VAL(key));
+		// php_debug_zval_dump(entry->default_properties_table + i, 1);
+
+		ph_store_add(&new_actor->props, key, entry->default_properties_table + i++);
+	} ZEND_HASH_FOREACH_END();
+
+    get_actor_ref_from_object_handle(PH_STRV(new_actor->ref), new_actor->obj.handle);
 
     add_new_actor(new_actor);
 
@@ -791,8 +822,14 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
 
 void add_new_actor(actor_t *new_actor)
 {
+	ph_string_t *key = malloc(sizeof(ph_string_t));
+
+	PH_STRL_P(key) = ACTOR_REF_LEN;
+	PH_STRV_P(key) = malloc(sizeof(char) * ACTOR_REF_LEN);
+	memcpy(PH_STRV_P(key), PH_STRV(new_actor->ref), sizeof(char) * ACTOR_REF_LEN);
+
 	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-	ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
+	ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, key, new_actor);
 	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 }
 
@@ -849,11 +886,13 @@ void php_actor_write_property(zval *actor_zval, zval *member, zval *value, void 
 	// rebuild_object_properties(&get_actor_from_object(Z_OBJ_P(object))->obj);
 }
 
-void php_actor_read_property(zval *actor_zval, zval *member, int type, void **cache, zval *rv)
+zval *php_actor_read_property(zval *actor_zval, zval *member, int type, void **cache, zval *rv)
 {
 	actor_t *actor = get_actor_from_zval(actor_zval);
 
 	ph_store_read(actor, Z_STR_P(member), &rv); // type?
+
+	return rv;
 }
 
 /* {{{ PHP_MINIT_FUNCTION */
@@ -883,6 +922,7 @@ PHP_MINIT_FUNCTION(phactor)
 
     phactor_actor_handlers.offset = XtOffsetOf(actor_t, obj);
 	phactor_actor_handlers.write_property = php_actor_write_property;
+	phactor_actor_handlers.read_property = php_actor_read_property;
     phactor_actor_handlers.dtor_obj = php_actor_dtor_object_dummy;
     phactor_actor_handlers.free_obj = php_actor_free_object_dummy;
     // phactor_actor_handlers.get_debug_info = phactor_actor_get_debug_info;

@@ -27,7 +27,7 @@ typedef struct _store_t {
         int boolean;
         int integer;
         double floating;
-        zend_string *string; // store as ph_string_t ?
+        ph_string_t string;
         // array
         // object
         // resource ?

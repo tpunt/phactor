@@ -84,6 +84,7 @@ static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, voi
 
 		if (b->hash < 1) {
 			b->hash = hash;
+			// b->key = *key; // ?
 			PH_STRV(b->key) = PH_STRV_P(key);
 			PH_STRL(b->key) = PH_STRL_P(key);
 			b->value = value;
@@ -126,7 +127,7 @@ static void ph_hashtable_resize(ph_hashtable_t *ht)
 	ph_bucket_t *old_values = ht->values;
 	int old_size = ht->size;
 
-	ht->size *= 2;
+	ht->size <<= 1;
 	ht->n_used = 0;
 	ht->values = malloc(sizeof(ph_bucket_t) * ht->size);
 

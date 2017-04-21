@@ -38,6 +38,22 @@ typedef struct _ph_hashtable_t {
     int n_used;
 } ph_hashtable_t;
 
+#define ph_hashtable_delete_by_value(ht, dtor, type, field, target) \
+	do { \
+		for (int i = 0; i < (ht)->size; ++i) { \
+			ph_bucket_t *b = (ht)->values + i; \
+\
+			if (b->hash > 0) { \
+				type actor = b->value; \
+\
+				if (actor->field == (target)) { \
+					(dtor)(b->value); \
+					free(PH_STRV(b->key)); \
+				} \
+			} \
+		} \
+	} while (0)
+
 ph_hashtable_t *ph_hashtable_alloc(int size);
 void ph_hashtable_init(ph_hashtable_t *ht, int size);
 void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value);
