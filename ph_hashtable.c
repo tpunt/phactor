@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "ph_prop_store.h"
 #include "ph_hashtable.h"
 
 static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, void *value);
@@ -244,5 +245,21 @@ void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key, void (*dtor_value
 		if (++index == ht->size) {
 			index -= ht->size;
 		}
+	}
+}
+
+void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
+{
+	for (int i = 0; i < phht->size; ++i) {
+		ph_bucket_t *b = phht->values + i;
+		zval value;
+
+		if (b->hash < 1) {
+			continue;
+		}
+
+		ph_entry_convert(&value, b->value);
+
+		_zend_hash_str_add(ht, PH_STRV(b->key), PH_STRL(b->key), &value ZEND_FILE_LINE_CC);
 	}
 }

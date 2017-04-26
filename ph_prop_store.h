@@ -19,9 +19,16 @@
 #ifndef PH_PROP_STORE_H
 #define PH_PROP_STORE_H
 
-#include "php_phactor.h"
+#include "Zend/zend.h"
+#include "ph_general.h"
+#include "ph_hashtable.h"
 
 typedef struct _store_t {
+    zend_class_entry *ce;
+    ph_hashtable_t props;
+} store_t;
+
+typedef struct _entry_t {
     int type;
     union {
         int boolean;
@@ -32,17 +39,20 @@ typedef struct _store_t {
         // object
         // resource ?
     } val;
-} store_t;
+    uint32_t scope;
+} entry_t;
 
-#define STORE_TYPE(s) (s)->type
-#define STORE_STRING(s) (s)->val.string
-#define STORE_LONG(s) (s)->val.integer
-#define STORE_DOUBLE(s) (s)->val.floating
-#define STORE_BOOL(s) (s)->val.boolean
+#define ENTRY_TYPE(s) (s)->type
+#define ENTRY_STRING(s) (s)->val.string
+#define ENTRY_LONG(s) (s)->val.integer
+#define ENTRY_DOUBLE(s) (s)->val.floating
+#define ENTRY_BOOL(s) (s)->val.boolean
+#define ENTRY_SCOPE(s) (s)->scope
 
-void ph_store_add(ph_hashtable_t *ht, zend_string *name, zval *value);
-void ph_store_hashtable_convert(HashTable *ht, ph_hashtable_t *props);
-void ph_store_read(actor_t *actor, zend_string *key, zval **rv);
-void delete_store(void *store);
+void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope);
+void ph_store_to_hashtable(HashTable *ht, store_t *store);
+void ph_entry_convert(zval *value, entry_t *s);
+void ph_store_read(store_t *store, zend_string *key, zval **rv, zval *this);
+void delete_entry(void *store);
 
 #endif

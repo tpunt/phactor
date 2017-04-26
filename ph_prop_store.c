@@ -20,102 +20,110 @@
 #include "config.h"
 #endif
 
-#include "ph_general.h"
-#include "ph_prop_store.h"
+#include "php_phactor.h"
 
-static void ph_store_convert(zval *value, store_t *s);
-static store_t *create_new_store(zval *value);
+static entry_t *create_new_entry(zval *value, uint32_t scope);
 
-void ph_store_add(ph_hashtable_t *ht, zend_string *name, zval *value)
+void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope)
 {
     ph_string_t key;
 
     ph_string_update(&key, ZSTR_VAL(name), ZSTR_LEN(name));
-    ph_hashtable_insert(ht, &key, create_new_store(value));
+    ph_hashtable_insert(&store->props, &key, create_new_entry(value, scope));
 }
 
-void ph_store_hashtable_convert(HashTable *ht, ph_hashtable_t *props)
+void ph_store_to_hashtable(HashTable *ht, store_t *store)
 {
-    for (int i = 0; i < props->size; ++i) {
-		ph_bucket_t *b = props->values + i;
-		store_t *s = b->value;
-		zval value;
-
-		if (b->hash < 1) {
-			continue;
-		}
-
-		ph_store_convert(&value, s);
-
-		_zend_hash_str_add(ht, PH_STRV(b->key), PH_STRL(b->key), &value ZEND_FILE_LINE_CC);
-	}
+    ph_hashtable_to_hashtable(ht, &store->props);
 }
 
-void ph_store_read(actor_t *actor, zend_string *key, zval **rv)
+void ph_store_read(store_t *store, zend_string *key, zval **rv, zval *this)
 {
     ph_string_t phstr;
 
     PH_STRV(phstr) = ZSTR_VAL(key);
     PH_STRL(phstr) = ZSTR_LEN(key);
 
-    store_t *s = ph_hashtable_search(&actor->props, &phstr);
+    entry_t *e = ph_hashtable_search(&store->props, &phstr);
 
-    if (s) {
-        ph_store_convert(*rv, s);
+    if (e) {
+        switch (ENTRY_SCOPE(e)) {
+            case ZEND_ACC_SHADOW:
+                zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
+                break;
+            case ZEND_ACC_PRIVATE:
+                if (!this || Z_OBJCE_P(this) != store->ce) {
+                    zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
+                } else {
+                    ph_entry_convert(*rv, e);
+                }
+                break;
+            case ZEND_ACC_PROTECTED:
+                if (!this || !instanceof_function(Z_OBJCE_P(this), store->ce)) {
+                    zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is protected\n", ZSTR_VAL(key));
+                } else {
+                    ph_entry_convert(*rv, e);
+                }
+                break;
+            case ZEND_ACC_PUBLIC:
+                ph_entry_convert(*rv, e);
+        }
     } else {
-        ZVAL_NULL(*rv);
-        printf("Undefined variable %s being read...\n", ZSTR_VAL(key));
+        zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is undefined\n", ZSTR_VAL(key));
     }
 }
 
-void delete_store(void *store_void)
+void delete_entry(void *entry_void)
 {
-    store_t *store = (store_t *) store_void;
-
-    free(store);
+    free((entry_t *)entry_void);
 }
 
-static void ph_store_convert(zval *value, store_t *s)
+void ph_entry_convert(zval *value, entry_t *e)
 {
-    switch (s->type) {
+    switch (ENTRY_TYPE(e)) {
         case IS_STRING:
-            ZVAL_STR(value, zend_string_init(PH_STRV(STORE_STRING(s)), PH_STRL(STORE_STRING(s)), 0));
+            ZVAL_STR(value, zend_string_init(PH_STRV(ENTRY_STRING(e)), PH_STRL(ENTRY_STRING(e)), 0));
             break;
         case IS_LONG:
-            ZVAL_LONG(value, s->val.integer);
+            ZVAL_LONG(value, ENTRY_LONG(e));
             break;
         case IS_DOUBLE:
-            ZVAL_DOUBLE(value, s->val.floating);
+            ZVAL_DOUBLE(value, ENTRY_DOUBLE(e));
             break;
         case _IS_BOOL:
-            ZVAL_BOOL(value, s->val.boolean);
+            ZVAL_BOOL(value, ENTRY_BOOL(e));
             break;
-        // obj...
+        case IS_NULL:
+            ZVAL_NULL(value);
+            break;
+        // array...
+        // object...
     }
 }
 
-static store_t *create_new_store(zval *value)
+static entry_t *create_new_entry(zval *value, uint32_t scope)
 {
-    store_t *s = malloc(sizeof(store_t));
+    entry_t *e = malloc(sizeof(entry_t));
 
-    STORE_TYPE(s) = Z_TYPE_P(value);
+    ENTRY_TYPE(e) = Z_TYPE_P(value);
+    ENTRY_SCOPE(e) = scope;
 
     switch (Z_TYPE_P(value)) {
         case IS_STRING:
-            PH_STRL(STORE_STRING(s)) = ZSTR_LEN(Z_STR_P(value));
-            PH_STRV(STORE_STRING(s)) = malloc(sizeof(char) * PH_STRL(STORE_STRING(s)));
-            memcpy(PH_STRV(STORE_STRING(s)), ZSTR_VAL(Z_STR_P(value)), sizeof(char) * PH_STRL(STORE_STRING(s)));
+            PH_STRL(ENTRY_STRING(e)) = ZSTR_LEN(Z_STR_P(value));
+            PH_STRV(ENTRY_STRING(e)) = malloc(sizeof(char) * PH_STRL(ENTRY_STRING(e)));
+            memcpy(PH_STRV(ENTRY_STRING(e)), ZSTR_VAL(Z_STR_P(value)), sizeof(char) * PH_STRL(ENTRY_STRING(e)));
             break;
         case IS_LONG:
-            STORE_LONG(s) = Z_LVAL_P(value);
+            ENTRY_LONG(e) = Z_LVAL_P(value);
             break;
         case IS_DOUBLE:
-            STORE_DOUBLE(s) = Z_DVAL_P(value);
+            ENTRY_DOUBLE(e) = Z_DVAL_P(value);
             break;
         case _IS_BOOL:
-            STORE_BOOL(s) = !!Z_LVAL_P(value);
+            ENTRY_BOOL(e) = !!Z_LVAL_P(value);
             break;
     }
 
-    return s;
+    return e;
 }

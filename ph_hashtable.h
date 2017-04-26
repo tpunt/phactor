@@ -19,7 +19,6 @@
 #ifndef PH_HASHTABLE_H
 #define PH_HASHTABLE_H
 
-#include "ph_general.h"
 
 // #define PH_HT_FE(ht, key, value) \
     // for (int i = 0; i < ht.size; ++i) { \
@@ -61,5 +60,6 @@ void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key, void (*dtor_value
 void *ph_hashtable_search(ph_hashtable_t *ht, ph_string_t *key);
 void ph_hashtable_update(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *));
+void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht);
 
 #endif

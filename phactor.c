@@ -23,7 +23,8 @@
 #endif
 
 #include "php_phactor.h"
-#include "ph_prop_store.h"
+#include "ph_copy.h"
+#include "ph_hashtable.h"
 #include "ph_debug.h"
 
 #ifndef ZTS
@@ -533,7 +534,7 @@ void php_actor_free_object(zend_object *obj)
 {
 	actor_t *actor = get_actor_from_object(obj);
 
-	ph_hashtable_destroy(&actor->props, delete_store);
+	ph_hashtable_destroy(&actor->store.props, delete_entry);
 
 	remove_actor(actor);
 }
@@ -800,17 +801,15 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
 	PH_STRL(new_actor->ref) = ACTOR_REF_LEN;
 	PH_STRV(new_actor->ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
 
-	ph_hashtable_init(&new_actor->props, 8);
+	new_actor->store.ce = entry;
+	ph_hashtable_init(&new_actor->store.props, 8);
 
 	zend_string *key;
     zend_property_info *value;
 	int i = 0;
 
     ZEND_HASH_FOREACH_STR_KEY_PTR(&entry->properties_info, key, value) {
-		// printf("Adding property %s with value ", ZSTR_VAL(key));
-		// php_debug_zval_dump(entry->default_properties_table + i, 1);
-
-		ph_store_add(&new_actor->props, key, entry->default_properties_table + i++);
+		ph_store_add(&new_actor->store, key, entry->default_properties_table + i++, value->flags);
 	} ZEND_HASH_FOREACH_END();
 
     get_actor_ref_from_object_handle(PH_STRV(new_actor->ref), new_actor->obj.handle);
@@ -869,7 +868,7 @@ HashTable *phactor_actor_get_properties(zval *actor_zval)
 
 	rebuild_object_properties(actor_obj);
 
-	ph_store_hashtable_convert(actor_obj->properties, &actor->props);
+	ph_store_to_hashtable(actor_obj->properties, &actor->store);
 
     return zend_std_get_properties(actor_zval);
 }
@@ -880,7 +879,7 @@ void php_actor_write_property(zval *actor_zval, zval *member, zval *value, void 
 
 	// @todo take into account __set
 
-	ph_store_add(&actor->props, Z_STR_P(member), value);
+	ph_store_add(&actor->store, Z_STR_P(member), value, ZEND_ACC_PUBLIC);
 
 	// _zend_hash_str_add(actor_obj->properties, b->key.val, b->key.len, &value ZEND_FILE_LINE_CC);
 	// rebuild_object_properties(&get_actor_from_object(Z_OBJ_P(object))->obj);
@@ -889,8 +888,13 @@ void php_actor_write_property(zval *actor_zval, zval *member, zval *value, void 
 zval *php_actor_read_property(zval *actor_zval, zval *member, int type, void **cache, zval *rv)
 {
 	actor_t *actor = get_actor_from_zval(actor_zval);
+	zval *this = &EG(current_execute_data)->This;
 
-	ph_store_read(actor, Z_STR_P(member), &rv); // type?
+	if (Z_TYPE_P(this) != IS_OBJECT) {
+		this = NULL;
+	}
+
+	ph_store_read(&actor->store, Z_STR_P(member), &rv, this); // getThis() type?
 
 	return rv;
 }
