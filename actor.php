@@ -7,6 +7,7 @@ class Test extends Actor
     public $a = 1;
     protected $b = 2;
     private $c = 3;
+    private $d = 5;
 
     public function __construct()
     {
@@ -18,12 +19,14 @@ class Test extends Actor
 
 class Test2 extends Test
 {
+    private $d = 4;
+
     public function __construct()
     {
         var_dump($this->a, $this->b);
 
         try {
-            var_dump($this->c);
+            var_dump($this->d);
         } catch (TypeError $te) {
             echo $te->getMessage();
         }
@@ -33,19 +36,19 @@ class Test2 extends Test
 $test = new Test();
 $test2 = new Test2();
 
-var_dump($test->a);
-
-try {
-    var_dump($test->b);
-} catch (TypeError $te) {
-    echo $te->getMessage();
-}
-
-try {
-    var_dump($test->c);
-} catch (TypeError $te) {
-    echo $te->getMessage();
-}
+// var_dump($test->a);
+//
+// try {
+//     var_dump($test->b);
+// } catch (TypeError $te) {
+//     echo $te->getMessage();
+// }
+//
+// try {
+//     var_dump($test->c);
+// } catch (TypeError $te) {
+//     echo $te->getMessage();
+// }
 
 $actorSystem->block();
 

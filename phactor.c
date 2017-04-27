@@ -806,10 +806,9 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
 
 	zend_string *key;
     zend_property_info *value;
-	int i = 0;
 
     ZEND_HASH_FOREACH_STR_KEY_PTR(&entry->properties_info, key, value) {
-		ph_store_add(&new_actor->store, key, entry->default_properties_table + i++, value->flags);
+		ph_store_add(&new_actor->store, key, OBJ_PROP(&new_actor->obj, value->offset), value->flags);
 	} ZEND_HASH_FOREACH_END();
 
     get_actor_ref_from_object_handle(PH_STRV(new_actor->ref), new_actor->obj.handle);

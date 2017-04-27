@@ -51,6 +51,7 @@ void ph_store_read(store_t *store, zend_string *key, zval **rv, zval *this)
             case ZEND_ACC_SHADOW:
                 zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
                 break;
+            case ZEND_ACC_PRIVATE | ZEND_ACC_CHANGED:
             case ZEND_ACC_PRIVATE:
                 if (!this || Z_OBJCE_P(this) != store->ce) {
                     zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
@@ -67,6 +68,10 @@ void ph_store_read(store_t *store, zend_string *key, zval **rv, zval *this)
                 break;
             case ZEND_ACC_PUBLIC:
                 ph_entry_convert(*rv, e);
+                break;
+            default:
+                php_printf("Unknown scope used (%d)\n", ENTRY_SCOPE(e));
+                assert(0);
         }
     } else {
         zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is undefined\n", ZSTR_VAL(key));
