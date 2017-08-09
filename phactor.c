@@ -820,14 +820,14 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
 
 void add_new_actor(actor_t *new_actor)
 {
-	ph_string_t *key = malloc(sizeof(ph_string_t));
+	ph_string_t key;
 
-	PH_STRL_P(key) = ACTOR_REF_LEN;
-	PH_STRV_P(key) = malloc(sizeof(char) * ACTOR_REF_LEN);
-	memcpy(PH_STRV_P(key), PH_STRV(new_actor->ref), sizeof(char) * ACTOR_REF_LEN);
+	PH_STRL(key) = ACTOR_REF_LEN;
+	PH_STRV(key) = malloc(sizeof(char) * ACTOR_REF_LEN);
+	memcpy(PH_STRV(key), PH_STRV(new_actor->ref), sizeof(char) * ACTOR_REF_LEN);
 
 	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-	ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, key, new_actor);
+	ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &key, new_actor);
 	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 }
 
