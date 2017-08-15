@@ -46,7 +46,7 @@ static zend_class_entry **copy_interfaces(zend_class_entry **old_interfaces, uin
 static zval *copy_def_prop_table(zval *old_default_prop_table, int prop_count);
 static zval *copy_def_statmem_table(zval *old_default_static_members_table, int member_count);
 static zval *copy_statmem_table(zval *old_static_members_table, int member_count);
-static zend_function *set_function_from_name(HashTable function_table, char *name);
+static zend_function *set_function_from_name(HashTable function_table, char *name, size_t length);
 static void copy_iterator_functions(zend_class_iterator_funcs *new_if, zend_class_iterator_funcs old_if);
 static void copy_doc_comment(zend_string **new_doc_comment, zend_string *old_doc_comment);
 static void copy_properties_info(HashTable *new_properties_info, HashTable *old_properties_info, zend_class_entry *new_ce);
@@ -460,19 +460,19 @@ static zend_class_entry *create_new_ce(zend_class_entry *old_ce)
     copy_properties_info(&new_ce->properties_info, &old_ce->properties_info, new_ce);
     zend_hash_copy(&new_ce->constants_table, &old_ce->constants_table, NULL); // @optimise
 
-    new_ce->constructor = set_function_from_name(new_ce->function_table, "__construct"); // @todo constructor may also be class name
-    new_ce->destructor = set_function_from_name(new_ce->function_table, "__destruct");
-    new_ce->clone = set_function_from_name(new_ce->function_table, "__clone");
-    new_ce->__get = set_function_from_name(new_ce->function_table, "__get");
-    new_ce->__set = set_function_from_name(new_ce->function_table, "__set");
-    new_ce->__unset = set_function_from_name(new_ce->function_table, "__unset");
-    new_ce->__isset = set_function_from_name(new_ce->function_table, "__isset");
-    new_ce->__call = set_function_from_name(new_ce->function_table, "__call");
-    new_ce->__callstatic = set_function_from_name(new_ce->function_table, "__callstatic");
-    new_ce->__tostring = set_function_from_name(new_ce->function_table, "__tostring");
-    new_ce->__debugInfo = set_function_from_name(new_ce->function_table, "__debuginfo");
-    new_ce->serialize_func = set_function_from_name(new_ce->function_table, "serialize");
-    new_ce->unserialize_func = set_function_from_name(new_ce->function_table, "unserialize");
+    new_ce->constructor = set_function_from_name(new_ce->function_table, ZEND_STRL("__construct")); // @todo may also be class name
+    new_ce->destructor = set_function_from_name(new_ce->function_table, ZEND_STRL("__destruct"));
+    new_ce->clone = set_function_from_name(new_ce->function_table, ZEND_STRL("__clone"));
+    new_ce->__get = set_function_from_name(new_ce->function_table, ZEND_STRL("__get"));
+    new_ce->__set = set_function_from_name(new_ce->function_table, ZEND_STRL("__set"));
+    new_ce->__unset = set_function_from_name(new_ce->function_table, ZEND_STRL("__unset"));
+    new_ce->__isset = set_function_from_name(new_ce->function_table, ZEND_STRL("__isset"));
+    new_ce->__call = set_function_from_name(new_ce->function_table, ZEND_STRL("__call"));
+    new_ce->__callstatic = set_function_from_name(new_ce->function_table, ZEND_STRL("__callstatic"));
+    new_ce->__tostring = set_function_from_name(new_ce->function_table, ZEND_STRL("__tostring"));
+    new_ce->__debugInfo = set_function_from_name(new_ce->function_table, ZEND_STRL("__debuginfo"));
+    new_ce->serialize_func = set_function_from_name(new_ce->function_table, ZEND_STRL("serialize"));
+    new_ce->unserialize_func = set_function_from_name(new_ce->function_table, ZEND_STRL("unserialize"));
 
     copy_iterator_functions(&new_ce->iterator_funcs, old_ce->iterator_funcs);
 
@@ -744,9 +744,9 @@ static zval *copy_statmem_table(zval *old_static_members_table, int member_count
     return new_static_members_table;
 }
 
-static zend_function *set_function_from_name(HashTable function_table, char *name)
+static zend_function *set_function_from_name(HashTable function_table, char *name, size_t length)
 {
-    return zend_hash_str_find_ptr(&function_table, name, strlen(name) - 1);
+    return zend_hash_str_find_ptr(&function_table, name, length);
 }
 
 static void copy_iterator_functions(zend_class_iterator_funcs *new_if, zend_class_iterator_funcs old_if)
