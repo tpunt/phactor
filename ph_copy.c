@@ -538,8 +538,6 @@ static void copy_properties_info(HashTable *new_properties_info, HashTable *old_
     ZEND_HASH_FOREACH_STR_KEY_PTR(old_properties_info, key, value) {
         zend_property_info prop_info = *value;
 
-        prop_info.name = zend_string_dup(prop_info.name, 0);
-
         if (prop_info.doc_comment) {
             prop_info.doc_comment = zend_string_dup(prop_info.doc_comment, 0);
         }
