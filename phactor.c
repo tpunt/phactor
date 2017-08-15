@@ -790,13 +790,18 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     zend_object_std_init(&new_actor->obj, entry);
     object_properties_init(&new_actor->obj, entry);
 
+	new_actor->obj.handlers = &phactor_actor_handlers;
+
+	if (!PHACTOR_G(actor_system)) {
+		zend_throw_exception(zend_ce_error, "The ActorSystem class must first be instantiated", 0);
+		return &new_actor->obj;
+	}
+
 	/*
 	The following prevents an actor that has been created and not used from being
 	instantly destroyed by the VM (given that it will be a TMP value).
 	*/
     ++GC_REFCOUNT(&new_actor->obj);
-
-    new_actor->obj.handlers = &phactor_actor_handlers;
 
 	PH_STRL(new_actor->ref) = ACTOR_REF_LEN;
 	PH_STRV(new_actor->ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
