@@ -543,11 +543,10 @@ void delete_actor(void *actor_void)
 {
 	actor_t *actor = (actor_t *) actor_void;
 
-	// GC_REFCOUNT(&actor->obj) = 0;
+	// GC_REFCOUNT(&actor->obj) = 0; // @todo needed?
 
-	// php_actor_free_object(&actor->obj); // @todo for property store destruction
-
-	// php_actor_dtor_object(&actor->obj); // @todo works?
+	php_actor_dtor_object(&actor->obj);
+	ph_hashtable_destroy(&actor->store.props, delete_entry);
 
 	free(PH_STRV(actor->ref));
 	efree(actor);
@@ -582,6 +581,7 @@ void php_actor_system_free_object(zend_object *obj)
 		free(PHACTOR_G(actor_system)->actor_removals[i].actors);
 	}
 
+	free(PHACTOR_G(actor_system)->actor_removals[PHACTOR_G(main_thread).offset].actors);
 	free(PHACTOR_G(actor_system)->actor_removals);
 	free(PHACTOR_G(actor_system)->actors.values);
 	efree(PHACTOR_G(actor_system));
