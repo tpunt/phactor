@@ -190,6 +190,19 @@ static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32
 {
     zend_arg_info *new_arg_info = emalloc(sizeof(zend_arg_info) * num_args);
 
+    memcpy(new_arg_info, old_arg_info, sizeof(zend_arg_info) * num_args);
+
+    for (int i = 0; i < num_args; ++i) {
+        new_arg_info[i].name = zend_string_dup(old_arg_info[i].name, 0);
+
+        if (ZEND_TYPE_IS_CLASS(old_arg_info[i].type)) {
+            zend_string *type_name = zend_string_dup(ZEND_TYPE_NAME(old_arg_info[i].type), 0);
+            zend_long allow_null = ZEND_TYPE_ALLOW_NULL(old_arg_info[i].type);
+
+            new_arg_info[i].type = ZEND_TYPE_ENCODE_CLASS(type_name, allow_null);
+        }
+    }
+/*
     for (int i = 0; i < num_args; ++i) {
         new_arg_info[i].name = zend_string_dup(old_arg_info[i].name, 0);
 
@@ -204,7 +217,7 @@ static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32
         new_arg_info[i].allow_null = old_arg_info[i].allow_null;
         new_arg_info[i].is_variadic = old_arg_info[i].is_variadic;
     }
-
+*/
     return new_arg_info;
 }
 
@@ -510,7 +523,7 @@ static void copy_functions(HashTable *new_func_table, HashTable old_func_table, 
                         destroy_op_array((zend_op_array *) new_func);
                     }
                 }
- 
+
                 zend_string_release(new_func_name);
             }
         }
@@ -662,9 +675,11 @@ static zval *copy_def_prop_table(zval *old_default_prop_table, int prop_count)
         if (Z_REFCOUNTED(old_default_prop_table[i])) {
             switch (Z_TYPE(old_default_prop_table[i])) {
                 case IS_LONG:
+                    // printf("%lld\n", Z_LVAL(old_default_prop_table[i]));
                     ZVAL_LONG(new_default_prop_table + i, Z_LVAL(old_default_prop_table[i]));
                     break;
                 case IS_STRING:
+                    // printf("%s\n", Z_STRVAL(old_default_prop_table[i]));
                     ZVAL_STRINGL(new_default_prop_table + i, Z_STRVAL(old_default_prop_table[i]), Z_STRLEN(old_default_prop_table[i]));
                     break;
                 case IS_OBJECT: // possible to even hit this?

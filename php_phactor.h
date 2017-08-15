@@ -74,9 +74,10 @@ extern zend_module_entry phactor_module_entry;
 #include <semaphore.h>
 #include <unistd.h>
 
+typedef struct _actor_t actor_t;
+
 #include "ph_general.h"
-#include "ph_copy.h"
-#include "ph_hashtable.h"
+#include "ph_prop_store.h"
 
 extern zend_class_entry *ActorSystem_ce;
 extern zend_class_entry *Actor_ce;
@@ -101,21 +102,21 @@ ZEND_TSRMLS_CACHE_EXTERN()
 // shortcut macros of PHACTOR_MAIN_EG et al.?
 
 
-
 typedef struct _message_t {
     ph_string_t from_actor_ref;
     zval *message; // why the separate allocation?
     struct _message_t *next_message;
 } message_t;
 
-typedef struct _actor_t {
+struct _actor_t {
     ph_string_t ref;
     message_t *mailbox;
     zend_execute_data *state;
     zend_bool in_execution;
-    ph_hashtable_t props;
+    store_t store;
+    int thread_offset;
     zend_object obj;
-} actor_t;
+};
 
 typedef struct _process_message_task {
     actor_t *for_actor;
@@ -139,8 +140,15 @@ typedef struct _task_t {
 typedef struct _thread_t {
     pthread_t thread; // must be first member
     zend_ulong id; // local storage ID used to fetch local storage data
+    int offset;
 	void*** ls; // pointer to local storage in TSRM
 } thread_t;
+
+typedef struct _actor_removal_t {
+	actor_t **actors;
+	int count;
+	int used;
+} actor_removal_t;
 
 typedef struct _actor_system_t {
     // char system_reference[10]; // @todo needed when remote actors are introduced
@@ -150,6 +158,7 @@ typedef struct _actor_system_t {
     int thread_count;
     int prepared_thread_count;
     thread_t *worker_threads;
+    actor_removal_t *actor_removals;
     zend_bool daemonised_actor_system;
     zend_object obj;
 } actor_system_t;
@@ -169,8 +178,6 @@ ZEND_BEGIN_MODULE_GLOBALS(phactor)
     // HashTable resolve; // used in prepare.c::pthreads_copy_entry
     HashTable symbol_tracker;
 ZEND_END_MODULE_GLOBALS(phactor)
-
-void add_new_actor(actor_t *new_actor);
 
 #endif
 
