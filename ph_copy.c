@@ -544,10 +544,8 @@ static void copy_properties_info(HashTable *new_properties_info, HashTable *old_
 
         prop_info.ce = new_ce; // @todo what about parent properties?
 
-        // zend_hash_str_del(new_properties_info, ZSTR_VAL(key), ZSTR_LEN(key));
-
         // @todo check for success
-        zend_hash_str_add_mem(new_properties_info, ZSTR_VAL(key), ZSTR_LEN(key), &prop_info, sizeof(zend_property_info));
+        zend_hash_add_mem(new_properties_info, key, &prop_info, sizeof(zend_property_info));
     } ZEND_HASH_FOREACH_END();
 }
 
