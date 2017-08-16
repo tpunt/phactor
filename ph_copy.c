@@ -670,35 +670,11 @@ static zval *copy_def_prop_table(zval *old_default_prop_table, int prop_count)
     for (int i = 0; i < prop_count; ++i) {
         if (Z_REFCOUNTED(old_default_prop_table[i])) {
             switch (Z_TYPE(old_default_prop_table[i])) {
-                case IS_LONG:
-                    // printf("%lld\n", Z_LVAL(old_default_prop_table[i]));
-                    ZVAL_LONG(new_default_prop_table + i, Z_LVAL(old_default_prop_table[i]));
-                    break;
                 case IS_STRING:
-                    // printf("%s\n", Z_STRVAL(old_default_prop_table[i]));
-                    ZVAL_STRINGL(new_default_prop_table + i, Z_STRVAL(old_default_prop_table[i]), Z_STRLEN(old_default_prop_table[i]));
+                    ZVAL_NEW_STR(new_default_prop_table + i, zend_string_dup(Z_STR(old_default_prop_table[i]), 0));
                     break;
-                case IS_OBJECT: // possible to even hit this?
-                    // handle it...
-                    // fall through too?
                 case IS_ARRAY:
-                    {
-                        printf("Attempting to serialise array\n");
-                        smart_str smart;
-                        php_serialize_data_t vars;
-
-                        PHP_VAR_SERIALIZE_INIT(vars);
-                        php_var_serialize(&smart, old_default_prop_table + i, &vars);
-                        PHP_VAR_SERIALIZE_DESTROY(vars);
-
-                        if (EG(exception)) {
-                            smart_str_free(&smart);
-                            printf("Failed to serialise array!\n");
-                        }
-ZVAL_LONG(new_default_prop_table + i, 3);
-                        // ZVAL_STRINGL(new_default_prop_table + i, smart.s->val, smart.s->len);
-                        // ++GC_REFCOUNT(Z_STR_P(new_default_prop_table + i));
-                    }
+                    ZVAL_ARR(new_default_prop_table + i, zend_array_dup(Z_ARR(old_default_prop_table[i])));
                     break;
                 default:
                     printf("Unknown type: %d\n", Z_TYPE(old_default_prop_table[i]));

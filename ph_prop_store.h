@@ -54,5 +54,6 @@ void ph_store_to_hashtable(HashTable *ht, store_t *store);
 void ph_entry_convert(zval *value, entry_t *s);
 void ph_store_read(store_t *store, zend_string *key, zval **rv, zval *this);
 void delete_entry(void *store);
+entry_t *create_new_entry(zval *value, uint32_t scope);
 
 #endif

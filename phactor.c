@@ -51,7 +51,7 @@ task_t *create_process_message_task(actor_t *for_actor);
 zend_object* phactor_actor_ctor(zend_class_entry *entry);
 void delete_actor(void *actor);
 void add_new_actor(actor_t *new_actor);
-message_t *create_new_message(ph_string_t *from_actor_ref, zval *message);
+message_t *create_new_message(ph_string_t *from_actor_ref, entry_t *message);
 void send_message(task_t *task);
 void send_local_message(actor_t *to_actor, task_t *task);
 void send_remote_message(task_t *task);
@@ -158,20 +158,22 @@ void process_message(task_t *task)
 
 	zval *return_value = emalloc(sizeof(zval));
 	zval *from_actor_zval = emalloc(sizeof(zval));
+	zval message_zval;
 
 	ZVAL_NULL(return_value);
 	ZVAL_STR(from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
+	ph_entry_convert(&message_zval, message->message);
 
 	// ++GC_REFCOUNT(&get_actor_from_ref(&message->from_actor_ref)->obj);
 
-	zend_call_user_method(for_actor->obj, return_value, from_actor_zval, message->message);
+	zend_call_user_method(for_actor->obj, return_value, from_actor_zval, &message_zval);
 
 	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
 	for_actor->in_execution = 0;
 	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
 	free(PH_STRV(message->from_actor_ref));
-	zval_ptr_dtor(message->message);
+	zval_ptr_dtor(&message_zval);
 	free(message->message);
 	free(message);
 
@@ -244,9 +246,10 @@ task_t *create_send_message_task(int from_actor_handle, char *to_actor_ref, zval
 	// @todo causes mem leaks with string or array (1 for array itself, 1 for each string/var)
 	// this needs changing over to use a custom storage system
 	if (Z_TYPE_P(message) == IS_OBJECT) {
-		ZVAL_DUP(new_task->task.smt.message, message);
+		// ZVAL_DUP(new_task->task.smt.message, message);
 	} else {
-		ZVAL_COPY(new_task->task.smt.message, message);
+		new_task->task.smt.message = create_new_entry(message, 0);
+		// ZVAL_COPY(new_task->task.smt.message, message);
 	}
 
 	// ++GC_REFCOUNT(Z_COUNTED_P(new_task->task.smt.message)); // only for ZVAL_DUP - needed anymore?
@@ -254,10 +257,11 @@ task_t *create_send_message_task(int from_actor_handle, char *to_actor_ref, zval
 	return new_task;
 }
 
-message_t *create_new_message(ph_string_t *from_actor_ref, zval *message)
+message_t *create_new_message(ph_string_t *from_actor_ref, entry_t *message)
 {
 	message_t *new_message = malloc(sizeof(message_t));
 
+	// new_message->from_actor_ref = *from_actor_ref
 	PH_STRL(new_message->from_actor_ref) = PH_STRL_P(from_actor_ref);
 	PH_STRV(new_message->from_actor_ref) = PH_STRV_P(from_actor_ref);
 	new_message->message = message;

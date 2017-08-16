@@ -104,7 +104,7 @@ ZEND_TSRMLS_CACHE_EXTERN()
 
 typedef struct _message_t {
     ph_string_t from_actor_ref;
-    zval *message; // why the separate allocation?
+    entry_t *message; // why the separate allocation?
     struct _message_t *next_message;
 } message_t;
 
@@ -125,7 +125,7 @@ typedef struct _process_message_task {
 typedef struct _send_message_task {
     ph_string_t from_actor_ref;
     ph_string_t to_actor_ref;
-    zval *message;
+    entry_t *message;
 } send_message_task;
 
 typedef struct _task_t {

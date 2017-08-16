@@ -22,8 +22,6 @@
 
 #include "php_phactor.h"
 
-static entry_t *create_new_entry(zval *value, uint32_t scope);
-
 void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope)
 {
     ph_string_t key;
@@ -101,12 +99,26 @@ void ph_entry_convert(zval *value, entry_t *e)
         case IS_NULL:
             ZVAL_NULL(value);
             break;
-        // array...
+        case IS_ARRAY:
+            {
+                size_t buf_len = PH_STRL(ENTRY_STRING(e));
+                const unsigned char *p = (const unsigned char *) PH_STRV(ENTRY_STRING(e));
+                php_unserialize_data_t var_hash;
+
+                PHP_VAR_UNSERIALIZE_INIT(var_hash);
+
+                if (!php_var_unserialize(value, &p, p + buf_len, &var_hash)) {
+                    // ...
+                }
+
+                PHP_VAR_UNSERIALIZE_DESTROY(var_hash);
+            }
+            break;
         // object...
     }
 }
 
-static entry_t *create_new_entry(zval *value, uint32_t scope)
+entry_t *create_new_entry(zval *value, uint32_t scope)
 {
     entry_t *e = malloc(sizeof(entry_t));
 
@@ -128,6 +140,27 @@ static entry_t *create_new_entry(zval *value, uint32_t scope)
         case _IS_BOOL:
             ENTRY_BOOL(e) = !!Z_LVAL_P(value);
             break;
+        case IS_ARRAY:
+            {
+                smart_str smart = {0};
+                php_serialize_data_t vars;
+
+                PHP_VAR_SERIALIZE_INIT(vars);
+                php_var_serialize(&smart, value, &vars);
+                PHP_VAR_SERIALIZE_DESTROY(vars);
+
+                if (EG(exception)) {
+                    smart_str_free(&smart);
+                } else {
+                    zend_string *sval = smart_str_extract(&smart);
+
+                    PH_STRL(ENTRY_STRING(e)) = ZSTR_LEN(sval);
+                    PH_STRV(ENTRY_STRING(e)) = malloc(ZSTR_LEN(sval));
+                    memcpy(PH_STRV(ENTRY_STRING(e)), ZSTR_VAL(sval), ZSTR_LEN(sval));
+
+                    zend_string_free(sval);
+                }
+            }
     }
 
     return e;
