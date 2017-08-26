@@ -42,7 +42,7 @@ void process_message(task_t *task);
 void enqueue_task(task_t *task);
 task_t *dequeue_task(void);
 void get_actor_ref_from_object_handle(char *ref, int handle);
-zval* zend_call_user_method(zend_object object, zval *retval_ptr, zval *from_actor, zval *message);
+void call_receive_method(zend_object object, zval *retval_ptr, zval *from_actor, zval *message);
 actor_t *get_actor_from_ref(ph_string_t *actor_ref);
 actor_t *get_actor_from_object(zend_object *actor_obj);
 actor_t *get_actor_from_zval(zval *actor_zval_obj);
@@ -160,7 +160,7 @@ void process_message(task_t *task)
 	ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
 	ph_entry_convert(&message_zval, message->message);
 
-	zend_call_user_method(for_actor->obj, &return_value, &from_actor_zval, &message_zval);
+	call_receive_method(for_actor->obj, &return_value, &from_actor_zval, &message_zval);
 
 	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
 	for_actor->in_execution = 0;
@@ -348,7 +348,7 @@ task_t *dequeue_task(void)
 	return task;
 }
 
-zval* zend_call_user_method(zend_object object, zval *retval_ptr, zval *from_actor, zval *message)
+void call_receive_method(zend_object object, zval *retval_ptr, zval *from_actor, zval *message)
 {
 	int result;
 	zend_fcall_info fci;
@@ -385,10 +385,8 @@ zval* zend_call_user_method(zend_object object, zval *retval_ptr, zval *from_act
 		}
 	}
 
-	zval_ptr_dtor(&fci.function_name);
+	zval_dtor(&fci.function_name);
 	// zend_string_free(receive_function_name);
-
-	return retval_ptr;
 }
 
 // @todo actually generate UUIDs for remote actors

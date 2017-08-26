@@ -199,6 +199,7 @@ void ph_hashtable_update(ph_hashtable_t *ht, ph_string_t *key, void *value)
 		ph_bucket_t *b = ht->values + index;
 
 		if (b->hash == hash && strcmp(PH_STRV(b->key), PH_STRV_P(key)) == 0) {
+			// @todo free previous value?
 			b->value = value;
 			break;
 		}
@@ -232,6 +233,8 @@ void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key, void (*dtor_value
 			b->value = NULL;
 			b->variance = 0;
 			--ht->n_used;
+
+			// @todo implement backtracking?
 
 			break;
 		}
