@@ -902,7 +902,7 @@ zval *php_actor_read_property(zval *actor_zval, zval *member, int type, void **c
 		this = NULL;
 	}
 
-	ph_store_read(&actor->store, Z_STR_P(member), &rv, this); // getThis() type?
+	ph_store_read(&actor->store, Z_STR_P(member), rv, this); // getThis() type?
 
 	return rv;
 }

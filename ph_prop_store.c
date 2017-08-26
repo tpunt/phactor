@@ -35,7 +35,7 @@ void ph_store_to_hashtable(HashTable *ht, store_t *store)
     ph_hashtable_to_hashtable(ht, &store->props);
 }
 
-void ph_store_read(store_t *store, zend_string *key, zval **rv, zval *this)
+void ph_store_read(store_t *store, zend_string *key, zval *rv, zval *this)
 {
     ph_string_t phstr;
 
@@ -54,18 +54,18 @@ void ph_store_read(store_t *store, zend_string *key, zval **rv, zval *this)
                 if (!this || Z_OBJCE_P(this) != store->ce) {
                     zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
                 } else {
-                    ph_entry_convert(*rv, e);
+                    ph_entry_convert(rv, e);
                 }
                 break;
             case ZEND_ACC_PROTECTED:
                 if (!this || !instanceof_function(Z_OBJCE_P(this), store->ce)) {
                     zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is protected\n", ZSTR_VAL(key));
                 } else {
-                    ph_entry_convert(*rv, e);
+                    ph_entry_convert(rv, e);
                 }
                 break;
             case ZEND_ACC_PUBLIC:
-                ph_entry_convert(*rv, e);
+                ph_entry_convert(rv, e);
                 break;
             default:
                 php_printf("Unknown scope used (%d)\n", ENTRY_SCOPE(e));
