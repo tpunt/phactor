@@ -150,23 +150,17 @@ void *worker_function(thread_t *phactor_thread)
 void process_message(task_t *task)
 {
 	actor_t *for_actor = task->task.pmt.for_actor;
+	zval return_value, from_actor_zval, message_zval;
 
 	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
 	message_t *message = for_actor->mailbox;
 	for_actor->mailbox = for_actor->mailbox->next_message;
 	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
-	zval *return_value = emalloc(sizeof(zval));
-	zval *from_actor_zval = emalloc(sizeof(zval));
-	zval message_zval;
-
-	ZVAL_NULL(return_value);
-	ZVAL_STR(from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
+	ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
 	ph_entry_convert(&message_zval, message->message);
 
-	// ++GC_REFCOUNT(&get_actor_from_ref(&message->from_actor_ref)->obj);
-
-	zend_call_user_method(for_actor->obj, return_value, from_actor_zval, &message_zval);
+	zend_call_user_method(for_actor->obj, &return_value, &from_actor_zval, &message_zval);
 
 	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
 	for_actor->in_execution = 0;
@@ -177,9 +171,8 @@ void process_message(task_t *task)
 	free(message->message);
 	free(message);
 
-	zval_ptr_dtor(from_actor_zval);
-	efree(from_actor_zval);
-	efree(return_value); // @todo remove this line (return the value instead? Or store it elsewhere?)
+	zval_ptr_dtor(&from_actor_zval);
+	zval_ptr_dtor(&return_value); // @todo how to handle the return value?
 }
 
 void send_message(task_t *task)
