@@ -251,11 +251,7 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array old_op
     new_op_array->last_var = old_op_array.last_var;
     new_op_array->T = old_op_array.T;
     new_op_array->vars = emalloc(sizeof(zend_string *) * old_op_array.last_var);
-
-    for (int i = 0; i < old_op_array.last_var; ++i) {
-        new_op_array->vars[i] = zend_string_dup(old_op_array.vars[i], 0);
-    }
-
+    memcpy(new_op_array->vars, old_op_array.vars, sizeof(zend_string *) * old_op_array.last_var);
     new_op_array->last_live_range = old_op_array.last_live_range;
     new_op_array->last_try_catch = old_op_array.last_try_catch;
     new_op_array->live_range = copy_zend_live_range(old_op_array.live_range, old_op_array.last_live_range);
