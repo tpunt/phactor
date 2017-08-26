@@ -23,7 +23,6 @@ static void copy_executor_globals(void);
 static zend_function *copy_function(zend_function *old_func, zend_class_entry *new_ce);
 static zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new_ce);
 static zend_function *copy_internal_function(zend_function *old_func);
-static zend_function *copy_function_common(zend_function *old_func, zend_class_entry *new_ce);
 static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32_t num_args);
 static void copy_znode_op(znode_op *new_znode, znode_op *old_znode);
 static zend_op *copy_zend_op(zend_op *old_opcodes, uint32_t count);
@@ -167,25 +166,6 @@ static zend_function *copy_function(zend_function *old_func, zend_class_entry *n
     return new_func;
 }
 
-static zend_function *copy_function_common(zend_function *old_func, zend_class_entry *new_ce)
-{
-    zend_function *new_func = emalloc(sizeof(zend_function));
-
-    new_func->common.type = old_func->common.type;
-    memcpy(new_func->common.arg_flags, old_func->common.arg_flags, sizeof(zend_uchar) * 3);
-    new_func->common.fn_flags = old_func->common.fn_flags;
-    new_func->common.function_name = zend_string_dup(old_func->common.function_name, 0);
-
-    new_func->common.scope = old_func->common.scope; // INTENTIONAL
-
-    new_func->common.prototype = NULL;
-    new_func->common.num_args = old_func->common.num_args;
-    new_func->common.required_num_args = old_func->common.required_num_args;
-    new_func->common.arg_info = copy_function_arg_info(old_func->common.arg_info, old_func->common.num_args);
-
-    return new_func;
-}
-
 static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32_t num_args)
 {
     zend_arg_info *new_arg_info = emalloc(sizeof(zend_arg_info) * num_args);
@@ -307,7 +287,19 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array old_op
 
 static zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new_ce)
 {
-    zend_function *new_func = copy_function_common(old_func, new_ce);
+    zend_function *new_func = emalloc(sizeof(zend_function));
+
+    new_func->common.type = old_func->common.type;
+    memcpy(new_func->common.arg_flags, old_func->common.arg_flags, sizeof(zend_uchar) * 3);
+    new_func->common.fn_flags = old_func->common.fn_flags;
+    new_func->common.function_name = zend_string_dup(old_func->common.function_name, 0);
+
+    new_func->common.scope = old_func->common.scope; // INTENTIONAL
+
+    new_func->common.prototype = NULL;
+    new_func->common.num_args = old_func->common.num_args;
+    new_func->common.required_num_args = old_func->common.required_num_args;
+    new_func->common.arg_info = copy_function_arg_info(old_func->common.arg_info, old_func->common.num_args);
 
     copy_zend_op_array(&new_func->op_array, old_func->op_array);
 
