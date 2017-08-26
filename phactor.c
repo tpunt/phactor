@@ -241,7 +241,6 @@ task_t *create_send_message_task(int from_actor_handle, char *to_actor_ref, zval
 	PH_STRV(new_task->task.smt.to_actor_ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
 	PH_STRL(new_task->task.smt.to_actor_ref) = ACTOR_REF_LEN;
 	memcpy(PH_STRV(new_task->task.smt.to_actor_ref), to_actor_ref, ACTOR_REF_LEN);
-	new_task->task.smt.message = malloc(sizeof(zval));
 
 	// @todo causes mem leaks with string or array (1 for array itself, 1 for each string/var)
 	// this needs changing over to use a custom storage system
