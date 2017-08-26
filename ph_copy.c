@@ -315,7 +315,6 @@ static zend_function *copy_internal_function(zend_function *old_func)
     zend_function *new_func = ecalloc(sizeof(zend_internal_function), 1);
 
     memcpy(new_func, old_func, sizeof(zend_internal_function));
-    new_func->common.function_name = zend_string_dup(old_func->common.function_name, 0);
 
     return new_func;
 }
