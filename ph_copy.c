@@ -31,7 +31,8 @@ static zend_try_catch_element *copy_zend_try_catch_element(zend_try_catch_elemen
 static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array old_op_array);
 static void copy_ini_directives(HashTable *new_ini_directives, HashTable *old_ini_directives);
 static void copy_included_files(HashTable *new_included_files, HashTable old_included_files);
-static void copy_constants(HashTable *new_constants, HashTable *old_constants);
+static void copy_global_constants(HashTable *new_constants, HashTable *old_constants);
+static void copy_class_constants(HashTable *new_constants_table, HashTable *old_constants_table);
 static void copy_constant(zend_constant *new_constant, zend_constant *old_constant);
 static void copy_ces(HashTable *new_ces, HashTable *old_ces);
 static zend_class_entry *copy_ce(zend_class_entry *old_ce);
@@ -74,7 +75,7 @@ static void copy_executor_globals(void)
 
     copy_functions(EG(function_table), *PHACTOR_EG(PHACTOR_G(main_thread).ls, function_table), NULL);
     copy_ces(EG(class_table), PHACTOR_CG(PHACTOR_G(main_thread).ls, class_table));
-    copy_constants(EG(zend_constants), PHACTOR_EG(PHACTOR_G(main_thread).ls, zend_constants));
+    copy_global_constants(EG(zend_constants), PHACTOR_EG(PHACTOR_G(main_thread).ls, zend_constants));
 
     // vm_stack_top
     // vm_stack_end
@@ -338,7 +339,7 @@ static void copy_included_files(HashTable *new_included_files, HashTable old_inc
     } ZEND_HASH_FOREACH_END();
 }
 
-static void copy_constants(HashTable *new_constants, HashTable *old_constants)
+static void copy_global_constants(HashTable *new_constants, HashTable *old_constants)
 {
     zend_constant *old_constant;
     zend_string *name;
@@ -367,11 +368,22 @@ static void copy_constants(HashTable *new_constants, HashTable *old_constants)
     } ZEND_HASH_FOREACH_END();
 }
 
+static void copy_class_constants(HashTable *new_constants_table, HashTable *old_constants_table)
+{
+    zend_string *key;
+    zend_constant *old_constant, new_constant;
+
+    ZEND_HASH_FOREACH_STR_KEY_PTR(old_constants_table, key, old_constant) {
+        copy_constant(&new_constant, old_constant);
+        zend_hash_add_ptr(new_constants_table, key, &new_constant);
+    } ZEND_HASH_FOREACH_END();
+}
+
 static void copy_constant(zend_constant *new_constant, zend_constant *old_constant)
 {
     ZVAL_DUP(&new_constant->value, &old_constant->value);
 
-    new_constant->name = zend_string_dup(old_constant->name, 0);
+    new_constant->name = old_constant->name;
     new_constant->flags = old_constant->flags;
     new_constant->module_number = old_constant->module_number;
 }
@@ -445,7 +457,7 @@ static zend_class_entry *create_new_ce(zend_class_entry *old_ce)
 
     copy_functions(&new_ce->function_table, old_ce->function_table, new_ce);
     copy_properties_info(&new_ce->properties_info, &old_ce->properties_info, new_ce);
-    zend_hash_copy(&new_ce->constants_table, &old_ce->constants_table, NULL); // @optimise
+    copy_class_constants(&new_ce->constants_table, &old_ce->constants_table);
 
     new_ce->constructor = set_function_from_name(new_ce->function_table, ZEND_STRL("__construct")); // @todo may also be class name
     new_ce->destructor = set_function_from_name(new_ce->function_table, ZEND_STRL("__destruct"));
