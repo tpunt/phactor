@@ -463,6 +463,8 @@ void initialise_actor_system()
 
 	ar->count = 4;
 	ar->actors = malloc(sizeof(actor_t *) * ar->count);
+
+	while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->prepared_thread_count);
 }
 
 void remove_actor(actor_t *target_actor)
@@ -612,7 +614,7 @@ void scheduler_blocking()
 	while (1) {
 		perform_actor_removals();
 		pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
-		if (PHACTOR_G(actor_system)->thread_count == PHACTOR_G(actor_system)->prepared_thread_count && PHACTOR_G(php_shutdown)) {
+		if (PHACTOR_G(php_shutdown)) {
 			pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
 			break;
 		}
