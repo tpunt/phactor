@@ -48,6 +48,7 @@ typedef struct _ph_hashtable_t {
 				if (actor->field == (target)) { \
 					(dtor)(b->value); \
 					free(PH_STRV(b->key)); \
+					b->hash = -1; \
 				} \
 			} \
 		} \

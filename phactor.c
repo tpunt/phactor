@@ -558,19 +558,7 @@ void php_actor_system_dtor_object(zend_object *obj)
 void php_actor_system_free_object(zend_object *obj)
 {
 	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-	for (int i = 0; i < PHACTOR_G(actor_system)->actors.size; ++i) {
-		ph_bucket_t *b = PHACTOR_G(actor_system)->actors.values + i;
-
-		if (b->hash > 0) {
-			actor_t *actor = b->value;
-
-			if (actor->thread_offset == thread_offset) {
-				delete_actor(b->value);
-				free(PH_STRV(b->key));
-			}
-		}
-	}
-	// ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, delete_actor, actor_t *, thread_offset, thread_offset);
+	ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, delete_actor, actor_t *, thread_offset, thread_offset);
 	pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
 	for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
