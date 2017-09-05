@@ -42,7 +42,7 @@ void process_message(task_t *task);
 void enqueue_task(task_t *task);
 task_t *dequeue_task(void);
 void get_actor_ref_from_object_handle(char *ref, int handle);
-void call_receive_method(zend_object object, zval *retval_ptr, zval *from_actor, zval *message);
+void call_receive_method(zend_object *object, zval *retval_ptr, zval *from_actor, zval *message);
 actor_t *get_actor_from_ref(ph_string_t *actor_ref);
 actor_t *get_actor_from_object(zend_object *actor_obj);
 actor_t *get_actor_from_zval(zval *actor_zval_obj);
@@ -160,7 +160,7 @@ void process_message(task_t *task)
 	ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
 	ph_entry_convert(&message_zval, message->message);
 
-	call_receive_method(for_actor->obj, &return_value, &from_actor_zval, &message_zval);
+	call_receive_method(&for_actor->obj, &return_value, &from_actor_zval, &message_zval);
 
 	pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
 	for_actor->in_execution = 0;
@@ -348,7 +348,7 @@ task_t *dequeue_task(void)
 	return task;
 }
 
-void call_receive_method(zend_object object, zval *retval_ptr, zval *from_actor, zval *message)
+void call_receive_method(zend_object *object, zval *retval_ptr, zval *from_actor, zval *message)
 {
 	int result;
 	zend_fcall_info fci;
@@ -364,7 +364,7 @@ void call_receive_method(zend_object object, zval *retval_ptr, zval *from_actor,
 	// receive_function = zend_hash_find_ptr(&object.ce->function_table, receive_function_name); // @todo hashtable consistency problems...
 
 	fci.size = sizeof(fci);
-	fci.object = &object;
+	fci.object = object;
 	fci.retval = retval_ptr;
 	fci.param_count = 2;
 	fci.params = params;
@@ -381,7 +381,7 @@ void call_receive_method(zend_object object, zval *retval_ptr, zval *from_actor,
 
 	if (result == FAILURE) { /* error at c-level */
 		if (!EG(exception)) {
-			zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object.ce->name), "::", receive_function_name);
+			zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object->ce->name), "::", receive_function_name);
 		}
 	}
 
