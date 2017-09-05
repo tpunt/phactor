@@ -855,10 +855,6 @@ HashTable *phactor_actor_get_properties(zval *actor_zval)
 	zend_object *actor_obj = Z_OBJ_P(actor_zval);
 	actor_t *actor = get_actor_from_object(actor_obj);
 
-	if (!actor) {
-		return NULL;
-	}
-
 	rebuild_object_properties(actor_obj);
 
 	ph_store_to_hashtable(actor_obj->properties, &actor->store);
