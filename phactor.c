@@ -838,11 +838,16 @@ static zend_object* phactor_actor_system_ctor(zend_class_entry *entry)
 	return &PHACTOR_G(actor_system)->obj;
 }
 
-HashTable *phactor_actor_get_debug_info(zval *object, int *is_temp)
+HashTable *phactor_actor_get_debug_info(zval *actor_zval, int *is_temp)
 {
-	// @todo
-    // return zend_std_get_properties(object);
-    return NULL;
+	HashTable *ht = emalloc(sizeof(HashTable));
+	actor_t *actor = get_actor_from_object(Z_OBJ_P(actor_zval));
+
+	zend_hash_init(ht, 8, NULL, ZVAL_PTR_DTOR, 0);
+	*is_temp = 1;
+	ph_store_to_hashtable(ht, &actor->store);
+
+	return ht;
 }
 
 HashTable *phactor_actor_get_properties(zval *actor_zval)
@@ -917,7 +922,7 @@ PHP_MINIT_FUNCTION(phactor)
 	phactor_actor_handlers.read_property = php_actor_read_property;
     phactor_actor_handlers.dtor_obj = php_actor_dtor_object_dummy;
     phactor_actor_handlers.free_obj = php_actor_free_object_dummy;
-    // phactor_actor_handlers.get_debug_info = phactor_actor_get_debug_info;
+    phactor_actor_handlers.get_debug_info = phactor_actor_get_debug_info;
     phactor_actor_handlers.get_properties = phactor_actor_get_properties;
 
     PHACTOR_G(phactor_instance) = TSRMLS_CACHE;
