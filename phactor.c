@@ -41,12 +41,11 @@ void *scheduler();
 void process_message(task_t *task);
 void enqueue_task(task_t *task);
 task_t *dequeue_task(void);
-void get_actor_ref_from_object_handle(char *ref, int handle);
 void call_receive_method(zend_object *object, zval *retval_ptr, zval *from_actor, zval *message);
 actor_t *get_actor_from_ref(ph_string_t *actor_ref);
 actor_t *get_actor_from_object(zend_object *actor_obj);
 actor_t *get_actor_from_zval(zval *actor_zval_obj);
-task_t *create_send_message_task(int from_actor_handle, char *to_actor_ref, zval *message);
+task_t *create_send_message_task(char *from_actor_ref, char *to_actor_ref, zval *message);
 task_t *create_process_message_task(actor_t *for_actor);
 zend_object* phactor_actor_ctor(zend_class_entry *entry);
 void delete_actor(void *actor);
@@ -68,8 +67,10 @@ pthread_mutex_t phactor_mutex;
 pthread_mutex_t phactor_task_mutex;
 pthread_mutex_t phactor_actors_mutex;
 pthread_mutex_t actor_removal_mutex;
+pthread_mutex_t global_actor_id_lock;
 actor_system_t *actor_system;
 int php_shutdown = 0;
+int global_actor_id = 0;
 dtor_func_t (default_resource_dtor);
 zend_object_handlers phactor_actor_handlers;
 zend_object_handlers phactor_actor_system_handlers;
@@ -222,7 +223,7 @@ void send_remote_message(task_t *task)
 	assert(0);
 }
 
-task_t *create_send_message_task(int from_actor_handle, char *to_actor_ref, zval *message)
+task_t *create_send_message_task(char *from_actor_ref, char *to_actor_ref, zval *message)
 {
 	task_t *new_task = malloc(sizeof(task_t));
 
@@ -230,7 +231,7 @@ task_t *create_send_message_task(int from_actor_handle, char *to_actor_ref, zval
 	new_task->next_task = NULL;
 	PH_STRV(new_task->task.smt.from_actor_ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
 	PH_STRL(new_task->task.smt.from_actor_ref) = ACTOR_REF_LEN;
-	get_actor_ref_from_object_handle(PH_STRV(new_task->task.smt.from_actor_ref), from_actor_handle);
+	memcpy(PH_STRV(new_task->task.smt.from_actor_ref), from_actor_ref, ACTOR_REF_LEN);
 	PH_STRV(new_task->task.smt.to_actor_ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
 	PH_STRL(new_task->task.smt.to_actor_ref) = ACTOR_REF_LEN;
 	memcpy(PH_STRV(new_task->task.smt.to_actor_ref), to_actor_ref, ACTOR_REF_LEN);
@@ -390,9 +391,12 @@ void call_receive_method(zend_object *object, zval *retval_ptr, zval *from_actor
 }
 
 // @todo actually generate UUIDs for remote actors
-void get_actor_ref_from_object_handle(char *ref, int handle)
+void set_actor_ref(ph_string_t *ref)
 {
-	sprintf(ref, "%022d%010d", 0, handle);
+	ref->len = 33;
+	pthread_mutex_lock(&global_actor_id_lock);
+	sprintf(ref->val, "%022d%010d", 0, ++global_actor_id);
+	pthread_mutex_unlock(&global_actor_id_lock);
 }
 
 actor_t *get_actor_from_ref(ph_string_t *actor_ref)
@@ -402,18 +406,7 @@ actor_t *get_actor_from_ref(ph_string_t *actor_ref)
 
 actor_t *get_actor_from_object(zend_object *actor_obj)
 {
-	char actor_ref[33];
-	ph_string_t ar;
-
-	get_actor_ref_from_object_handle(actor_ref, actor_obj->handle);
-	ar.len = 33;
-	ar.val = actor_ref;
-
-	actor_t *actor = get_actor_from_ref(&ar);
-
-	// actor_t *actor = (actor_t *) ((char *) actor_obj - XtOffsetOf(actor_t, obj));
-
-	return actor;
+	return (actor_t *)((char *)actor_obj - XtOffsetOf(actor_t, obj));
 }
 
 actor_t *get_actor_from_zval(zval *actor_zval_obj)
@@ -688,7 +681,7 @@ PHP_METHOD(ActorSystem, block)
 /* {{{ proto string Actor::send(Actor|string $actor, mixed $message) */
 PHP_METHOD(Actor, send)
 {
-	char to_actor_ref[ACTOR_REF_LEN] = {'0'};
+	char *to_actor_ref;
 	zval *to_actor;
 	zval *message;
 
@@ -703,18 +696,18 @@ PHP_METHOD(Actor, send)
 			// zend_throw_exception_ex(NULL, )
 		}
 
-		memcpy(to_actor_ref, Z_STRVAL_P(to_actor), ACTOR_REF_LEN);
+		to_actor_ref = Z_STRVAL_P(to_actor);
 	} else if (Z_TYPE_P(to_actor) == IS_OBJECT) {
 		if (!instanceof_function(Z_OBJCE_P(to_actor), Actor_ce)) {
 			// zend_throw_exception_ex(NULL, )
 		}
 
-		get_actor_ref_from_object_handle(to_actor_ref, Z_OBJ_P(to_actor)->handle);
+		to_actor_ref = PH_STRV(get_actor_from_object(Z_OBJ_P(to_actor))->ref);
 	} else {
 		// zend_throw_exception_ex(NULL, )
 	}
 
-    enqueue_task(create_send_message_task(Z_OBJ(EX(This))->handle, to_actor_ref, message));
+	enqueue_task(create_send_message_task(PH_STRV(get_actor_from_object(Z_OBJ(EX(This)))->ref), to_actor_ref, message));
 }
 /* }}} */
 
@@ -766,9 +759,6 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
 {
     actor_t *new_actor = ecalloc(1, sizeof(actor_t) + zend_object_properties_size(entry));
 
-    new_actor->mailbox = NULL;
-    new_actor->state = NULL;
-	new_actor->in_execution = 0;
 	new_actor->thread_offset = thread_offset;
 
     zend_object_std_init(&new_actor->obj, entry);
@@ -789,6 +779,7 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
 
 	PH_STRL(new_actor->ref) = ACTOR_REF_LEN;
 	PH_STRV(new_actor->ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
+	set_actor_ref(&new_actor->ref);
 
 	new_actor->store.ce = entry;
 	ph_hashtable_init(&new_actor->store.props, 8);
@@ -799,8 +790,6 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     ZEND_HASH_FOREACH_STR_KEY_PTR(&entry->properties_info, key, value) {
 		ph_store_add(&new_actor->store, key, OBJ_PROP(&new_actor->obj, value->offset), value->flags);
 	} ZEND_HASH_FOREACH_END();
-
-    get_actor_ref_from_object_handle(PH_STRV(new_actor->ref), new_actor->obj.handle);
 
     add_new_actor(new_actor);
 
@@ -927,6 +916,7 @@ PHP_MINIT_FUNCTION(phactor)
 	pthread_mutex_init(&phactor_task_mutex, NULL);
 	pthread_mutex_init(&phactor_actors_mutex, NULL);
 	pthread_mutex_init(&actor_removal_mutex, NULL); // @todo optimise by specialising per thread
+	pthread_mutex_init(&global_actor_id_lock, NULL);
 
     return SUCCESS;
 }
@@ -939,6 +929,7 @@ PHP_MSHUTDOWN_FUNCTION(phactor)
 	pthread_mutex_destroy(&phactor_task_mutex);
 	pthread_mutex_destroy(&phactor_actors_mutex);
 	pthread_mutex_destroy(&actor_removal_mutex);
+	pthread_mutex_destroy(&global_actor_id_lock);
 
 	return SUCCESS;
 }
