@@ -417,10 +417,10 @@ static zend_class_entry *copy_ce(zend_class_entry *old_ce)
     }
 
     if (old_ce->ce_flags & ZEND_ACC_ANON_CLASS) {
-		if (!(old_ce->ce_flags & ZEND_ACC_ANON_BOUND)) {
-			// return NULL;
-		}
-	}
+        if (!(old_ce->ce_flags & ZEND_ACC_ANON_BOUND)) {
+            // return NULL;
+        }
+    }
 
     zend_string *new_ce_name = zend_string_tolower(old_ce->name);
     zend_class_entry *new_ce = zend_hash_find_ptr(EG(class_table), new_ce_name);

@@ -27,11 +27,11 @@ extern zend_module_entry phactor_module_entry;
 #define PHP_PHACTOR_VERSION "0.1.0"
 
 #ifdef PHP_WIN32
-#	define PHP_PHACTOR_API __declspec(dllexport)
+#    define PHP_PHACTOR_API __declspec(dllexport)
 #elif defined(__GNUC__) && __GNUC__ >= 4
-#	define PHP_PHACTOR_API __attribute__ ((visibility("default")))
+#    define PHP_PHACTOR_API __attribute__ ((visibility("default")))
 #else
-#	define PHP_PHACTOR_API
+#    define PHP_PHACTOR_API
 #endif
 
 #include <main/php.h>
@@ -141,13 +141,13 @@ typedef struct _thread_t {
     pthread_t thread; // must be first member
     zend_ulong id; // local storage ID used to fetch local storage data
     int offset;
-	void*** ls; // pointer to local storage in TSRM
+    void*** ls; // pointer to local storage in TSRM
 } thread_t;
 
 typedef struct _actor_removal_t {
-	actor_t **actors;
-	int count;
-	int used;
+    actor_t **actors;
+    int count;
+    int used;
 } actor_removal_t;
 
 typedef struct _actor_system_t {
