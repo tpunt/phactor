@@ -27,7 +27,7 @@ static void copy_znode_op(znode_op *new_znode, znode_op *old_znode);
 static zend_op *copy_zend_op(zend_op *old_opcodes, uint32_t count);
 static zend_live_range *copy_zend_live_range(zend_live_range *old_live_range, uint32_t count);
 static zend_try_catch_element *copy_zend_try_catch_element(zend_try_catch_element *old_try_catch, uint32_t count);
-static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array old_op_array);
+static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array);
 static void copy_ini_directives(HashTable *new_ini_directives, HashTable *old_ini_directives);
 static void copy_included_files(HashTable *new_included_files, HashTable old_included_files);
 static void copy_global_constants(HashTable *new_constants, HashTable *old_constants);
@@ -36,7 +36,7 @@ static void copy_constant(zend_constant *new_constant, zend_constant *old_consta
 static void copy_ces(HashTable *new_ces, HashTable *old_ces);
 static zend_class_entry *copy_ce(zend_class_entry *old_ce);
 static zend_class_entry *create_new_ce(zend_class_entry *old_ce);
-static void copy_functions(HashTable *new_func_table, HashTable old_func_table, zend_class_entry *new_ce);
+static void copy_functions(HashTable *new_func_table, HashTable *old_func_table, zend_class_entry *new_ce);
 static zend_trait_method_reference *copy_trait_method_reference(zend_trait_method_reference *method_reference);
 static zend_trait_precedence **copy_trait_precedences(zend_trait_precedence **old_tps);
 static zend_trait_alias **copy_trait_aliases(zend_trait_alias **old_tas);
@@ -72,7 +72,7 @@ static void copy_executor_globals(void)
     // error_reporting
     // exit_status
 
-    copy_functions(EG(function_table), *PHACTOR_EG(PHACTOR_G(main_thread).ls, function_table), NULL);
+    copy_functions(EG(function_table), PHACTOR_EG(PHACTOR_G(main_thread).ls, function_table), NULL);
     copy_ces(EG(class_table), PHACTOR_CG(PHACTOR_G(main_thread).ls, class_table));
     copy_global_constants(EG(zend_constants), PHACTOR_EG(PHACTOR_G(main_thread).ls, zend_constants));
 
@@ -242,49 +242,49 @@ static zend_try_catch_element *copy_zend_try_catch_element(zend_try_catch_elemen
     return new_try_catch;
 }
 
-static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array old_op_array)
+static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array)
 {
     new_op_array->refcount = emalloc(sizeof(uint32_t));
     *new_op_array->refcount = 1;
-    new_op_array->last = old_op_array.last;
-    new_op_array->opcodes = copy_zend_op(old_op_array.opcodes, old_op_array.last);
-    new_op_array->last_var = old_op_array.last_var;
-    new_op_array->T = old_op_array.T;
-    new_op_array->vars = emalloc(sizeof(zend_string *) * old_op_array.last_var);
-    memcpy(new_op_array->vars, old_op_array.vars, sizeof(zend_string *) * old_op_array.last_var);
-    new_op_array->last_live_range = old_op_array.last_live_range;
-    new_op_array->last_try_catch = old_op_array.last_try_catch;
-    new_op_array->live_range = copy_zend_live_range(old_op_array.live_range, old_op_array.last_live_range);
-    new_op_array->try_catch_array = copy_zend_try_catch_element(old_op_array.try_catch_array, old_op_array.last_try_catch);
+    new_op_array->last = old_op_array->last;
+    new_op_array->opcodes = copy_zend_op(old_op_array->opcodes, old_op_array->last);
+    new_op_array->last_var = old_op_array->last_var;
+    new_op_array->T = old_op_array->T;
+    new_op_array->vars = emalloc(sizeof(zend_string *) * old_op_array->last_var);
+    memcpy(new_op_array->vars, old_op_array->vars, sizeof(zend_string *) * old_op_array->last_var);
+    new_op_array->last_live_range = old_op_array->last_live_range;
+    new_op_array->last_try_catch = old_op_array->last_try_catch;
+    new_op_array->live_range = copy_zend_live_range(old_op_array->live_range, old_op_array->last_live_range);
+    new_op_array->try_catch_array = copy_zend_try_catch_element(old_op_array->try_catch_array, old_op_array->last_try_catch);
 
-    if (old_op_array.static_variables) {
+    if (old_op_array->static_variables) {
         ALLOC_HASHTABLE(new_op_array->static_variables);
-        zend_hash_copy(new_op_array->static_variables, old_op_array.static_variables, NULL);
+        zend_hash_copy(new_op_array->static_variables, old_op_array->static_variables, NULL);
     } else {
         new_op_array->static_variables = NULL;
     }
 
-    if (!(new_op_array->filename = zend_hash_find_ptr(&PHACTOR_ZG(interned_strings), old_op_array.filename))) {
-        zend_string *filename = zend_string_dup(old_op_array.filename, 0);
+    if (!(new_op_array->filename = zend_hash_find_ptr(&PHACTOR_ZG(interned_strings), old_op_array->filename))) {
+        zend_string *filename = zend_string_dup(old_op_array->filename, 0);
 
         new_op_array->filename = zend_hash_add_ptr(&PHACTOR_ZG(interned_strings), filename, filename);
         zend_string_release(filename);
     }
 
-    new_op_array->line_start = old_op_array.line_start;
-    new_op_array->line_end = old_op_array.line_end;
-    new_op_array->doc_comment = old_op_array.doc_comment ? zend_string_dup(old_op_array.doc_comment, 0) : NULL;
-    new_op_array->early_binding = old_op_array.early_binding;
-    new_op_array->last_literal = old_op_array.last_literal;
-    new_op_array->literals = emalloc(sizeof(zval) * old_op_array.last_literal);
+    new_op_array->line_start = old_op_array->line_start;
+    new_op_array->line_end = old_op_array->line_end;
+    new_op_array->doc_comment = old_op_array->doc_comment ? zend_string_dup(old_op_array->doc_comment, 0) : NULL;
+    new_op_array->early_binding = old_op_array->early_binding;
+    new_op_array->last_literal = old_op_array->last_literal;
+    new_op_array->literals = emalloc(sizeof(zval) * old_op_array->last_literal);
 
-    for (int i = 0; i < old_op_array.last_literal; ++i) {
-        ZVAL_DUP(&new_op_array->literals[i], &old_op_array.literals[i]); // should be stored agnostically?
+    for (int i = 0; i < old_op_array->last_literal; ++i) {
+        ZVAL_DUP(new_op_array->literals + i, old_op_array->literals + i); // should be stored agnostically?
     }
 
-    new_op_array->cache_size = old_op_array.cache_size;
+    new_op_array->cache_size = old_op_array->cache_size;
     new_op_array->run_time_cache = NULL;
-    memcpy(new_op_array->reserved, old_op_array.reserved, sizeof(void *) * ZEND_MAX_RESERVED_RESOURCES);
+    memcpy(new_op_array->reserved, old_op_array->reserved, sizeof(void *) * ZEND_MAX_RESERVED_RESOURCES);
 }
 
 zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new_ce)
@@ -302,7 +302,7 @@ zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new
     new_func->common.required_num_args = old_func->common.required_num_args;
     new_func->common.arg_info = copy_function_arg_info(old_func->common.arg_info, old_func->common.num_args);
 
-    copy_zend_op_array(&new_func->op_array, old_func->op_array);
+    copy_zend_op_array(&new_func->op_array, &old_func->op_array);
 
     if (new_func->common.scope != new_ce) {
         zend_op_array *op_array = &new_func->op_array;
@@ -462,7 +462,7 @@ static zend_class_entry *create_new_ce(zend_class_entry *old_ce)
     new_ce->default_static_members_table = copy_def_statmem_table(old_ce->default_static_members_table, old_ce->default_static_members_count);
     new_ce->static_members_table = copy_statmem_table(old_ce->default_static_members_table, old_ce->default_static_members_count);
 
-    copy_functions(&new_ce->function_table, old_ce->function_table, new_ce);
+    copy_functions(&new_ce->function_table, &old_ce->function_table, new_ce);
     copy_properties_info(&new_ce->properties_info, &old_ce->properties_info, new_ce);
     copy_class_constants(&new_ce->constants_table, &old_ce->constants_table);
 
@@ -506,12 +506,12 @@ static zend_class_entry *create_new_ce(zend_class_entry *old_ce)
     return new_ce;
 }
 
-static void copy_functions(HashTable *new_func_table, HashTable old_func_table, zend_class_entry *new_ce)
+static void copy_functions(HashTable *new_func_table, HashTable *old_func_table, zend_class_entry *new_ce)
 {
     zend_string *old_func_name;
     zend_function *old_func;
 
-    ZEND_HASH_FOREACH_STR_KEY_PTR(&old_func_table, old_func_name, old_func) {
+    ZEND_HASH_FOREACH_STR_KEY_PTR(old_func_table, old_func_name, old_func) {
         if (new_ce) {
             zend_string *new_func_name = zend_string_dup(old_func_name, 0);
             zend_function *new_func = copy_function(old_func, new_ce);
