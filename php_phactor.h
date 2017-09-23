@@ -173,10 +173,7 @@ extern zend_object_handlers phactor_actor_system_handlers;
 ZEND_EXTERN_MODULE_GLOBALS(phactor)
 
 ZEND_BEGIN_MODULE_GLOBALS(phactor)
-    // zval this;
-    // HashTable *resources; // used in store.c::pthreads_resources_keep
-    // HashTable resolve; // used in prepare.c::pthreads_copy_entry
-    HashTable symbol_tracker;
+    HashTable interned_strings; // used for op_array file names
 ZEND_END_MODULE_GLOBALS(phactor)
 
 #endif

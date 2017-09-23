@@ -35,6 +35,7 @@ typedef struct _entry_t {
         int integer;
         double floating;
         ph_string_t string;
+        zend_function *func;
         // array
         // object
         // resource ?
@@ -42,11 +43,14 @@ typedef struct _entry_t {
     uint32_t scope;
 } entry_t;
 
+#define PH_STORE_FUNC 100
+
 #define ENTRY_TYPE(s) (s)->type
 #define ENTRY_STRING(s) (s)->val.string
 #define ENTRY_LONG(s) (s)->val.integer
 #define ENTRY_DOUBLE(s) (s)->val.floating
 #define ENTRY_BOOL(s) (s)->val.boolean
+#define ENTRY_FUNC(s) (s)->val.func
 #define ENTRY_SCOPE(s) (s)->scope
 
 void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope);

@@ -21,7 +21,6 @@
 
 static void copy_executor_globals(void);
 static zend_function *copy_function(zend_function *old_func, zend_class_entry *new_ce);
-static zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new_ce);
 static zend_function *copy_internal_function(zend_function *old_func);
 static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32_t num_args);
 static void copy_znode_op(znode_op *new_znode, znode_op *old_znode);
@@ -265,7 +264,13 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array old_op
         new_op_array->static_variables = NULL;
     }
 
-    new_op_array->filename = zend_string_dup(old_op_array.filename, 0);
+    if (!(new_op_array->filename = zend_hash_find_ptr(&PHACTOR_ZG(interned_strings), old_op_array.filename))) {
+        zend_string *filename = zend_string_dup(old_op_array.filename, 0);
+
+        new_op_array->filename = zend_hash_add_ptr(&PHACTOR_ZG(interned_strings), filename, filename);
+        zend_string_release(filename);
+    }
+
     new_op_array->line_start = old_op_array.line_start;
     new_op_array->line_end = old_op_array.line_end;
     new_op_array->doc_comment = old_op_array.doc_comment ? zend_string_dup(old_op_array.doc_comment, 0) : NULL;
@@ -274,7 +279,7 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array old_op
     new_op_array->literals = emalloc(sizeof(zval) * old_op_array.last_literal);
 
     for (int i = 0; i < old_op_array.last_literal; ++i) {
-        ZVAL_DUP(&new_op_array->literals[i], &old_op_array.literals[i]);
+        ZVAL_DUP(&new_op_array->literals[i], &old_op_array.literals[i]); // should be stored agnostically?
     }
 
     new_op_array->cache_size = old_op_array.cache_size;
@@ -282,17 +287,16 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array old_op
     memcpy(new_op_array->reserved, old_op_array.reserved, sizeof(void *) * ZEND_MAX_RESERVED_RESOURCES);
 }
 
-static zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new_ce)
+zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new_ce)
 {
-    zend_function *new_func = emalloc(sizeof(zend_function));
+    zend_function *new_func = zend_arena_alloc(&CG(arena), sizeof(zend_function));
 
+    // new_func->common.quick_arg_flags = old_func->common.quick_arg_flags;
     new_func->common.type = old_func->common.type;
     memcpy(new_func->common.arg_flags, old_func->common.arg_flags, sizeof(zend_uchar) * 3);
     new_func->common.fn_flags = old_func->common.fn_flags;
     new_func->common.function_name = zend_string_dup(old_func->common.function_name, 0);
-
-    new_func->common.scope = old_func->common.scope; // INTENTIONAL
-
+    new_func->common.scope = old_func->common.scope;
     new_func->common.prototype = NULL;
     new_func->common.num_args = old_func->common.num_args;
     new_func->common.required_num_args = old_func->common.required_num_args;
@@ -302,10 +306,13 @@ static zend_function *copy_user_function(zend_function *old_func, zend_class_ent
 
     if (new_func->common.scope != new_ce) {
         zend_op_array *op_array = &new_func->op_array;
-        op_array->run_time_cache = emalloc(op_array->cache_size);
-        memset(op_array->run_time_cache, 0, op_array->cache_size);
-        op_array->fn_flags |= ZEND_ACC_NO_RT_ARENA;
-        new_func->common.scope = new_ce;
+
+        op_array->run_time_cache = NULL;
+        new_func->common.scope = new_ce; // should the scope be prepared instead?
+
+        // @todo setting the runtime cache causes heap corruption issues...
+        // op_array->run_time_cache = ecalloc(op_array->cache_size, 1);
+        // op_array->fn_flags |= ZEND_ACC_NO_RT_ARENA;
     }
 
     return new_func;
@@ -313,7 +320,7 @@ static zend_function *copy_user_function(zend_function *old_func, zend_class_ent
 
 static zend_function *copy_internal_function(zend_function *old_func)
 {
-    zend_function *new_func = ecalloc(sizeof(zend_internal_function), 1);
+    zend_function *new_func = emalloc(sizeof(zend_internal_function));
 
     memcpy(new_func, old_func, sizeof(zend_internal_function));
 

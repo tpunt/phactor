@@ -169,7 +169,7 @@ void process_message(task_t *task)
 
     free(PH_STRV(message->from_actor_ref));
     zval_ptr_dtor(&message_zval);
-    free(message->message);
+    delete_entry(message->message);
     free(message);
 
     zval_ptr_dtor(&from_actor_zval);
@@ -235,17 +235,7 @@ task_t *create_send_message_task(char *from_actor_ref, char *to_actor_ref, zval 
     PH_STRV(new_task->task.smt.to_actor_ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
     PH_STRL(new_task->task.smt.to_actor_ref) = ACTOR_REF_LEN;
     memcpy(PH_STRV(new_task->task.smt.to_actor_ref), to_actor_ref, ACTOR_REF_LEN);
-
-    // @todo causes mem leaks with string or array (1 for array itself, 1 for each string/var)
-    // this needs changing over to use a custom storage system
-    if (Z_TYPE_P(message) == IS_OBJECT) {
-        // ZVAL_DUP(new_task->task.smt.message, message);
-    } else {
-        new_task->task.smt.message = create_new_entry(message, 0);
-        // ZVAL_COPY(new_task->task.smt.message, message);
-    }
-
-    // ++GC_REFCOUNT(Z_COUNTED_P(new_task->task.smt.message)); // only for ZVAL_DUP - needed anymore?
+    new_task->task.smt.message = create_new_entry(message, 0);
 
     return new_task;
 }
@@ -940,14 +930,14 @@ PHP_RINIT_FUNCTION(phactor)
 {
     TSRMLS_CACHE_UPDATE();
 
-    // zend_hash_init(&PHACTOR_ZG(symbol_tracker), 15, NULL, NULL, 0);
-
     // @todo remove, not needed?
     if (PHACTOR_G(phactor_instance) != TSRMLS_CACHE) {
         if (memcmp(sapi_module.name, ZEND_STRL("cli")) == SUCCESS) {
             sapi_module.deactivate = NULL;
         }
     }
+
+    zend_hash_init(&PHACTOR_ZG(interned_strings), 8, NULL, ZVAL_PTR_DTOR, 0);
 
     return SUCCESS;
 }
@@ -956,7 +946,7 @@ PHP_RINIT_FUNCTION(phactor)
 /* {{{ PHP_RSHUTDOWN_FUNCTION */
 PHP_RSHUTDOWN_FUNCTION(phactor)
 {
-    // zend_hash_destroy(&PHACTOR_ZG(symbol_tracker));
+    zend_hash_destroy(&PHACTOR_ZG(interned_strings));
 
     return SUCCESS;
 }
@@ -1007,9 +997,9 @@ zend_module_entry phactor_module_entry = {
     PHP_RSHUTDOWN(phactor),
     PHP_MINFO(phactor),
     PHP_PHACTOR_VERSION,
-    NO_MODULE_GLOBALS, //PHP_MODULE_GLOBALS(phactor),
-    //NULL, //PHP_GINIT(phactor),
-    //NULL, //PHP_GSHUTDOWN(phactor),
+    PHP_MODULE_GLOBALS(phactor),
+    NULL, //PHP_GINIT(phactor),
+    NULL, //PHP_GSHUTDOWN(phactor),
     NULL,
     STANDARD_MODULE_PROPERTIES_EX
 };

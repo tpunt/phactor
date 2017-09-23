@@ -22,5 +22,6 @@
 #include "php_phactor.h"
 
 void copy_execution_context(void);
+zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new_ce);
 
 #endif

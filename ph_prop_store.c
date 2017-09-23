@@ -21,6 +21,7 @@
 #endif
 
 #include "php_phactor.h"
+#include "ph_copy.h"
 
 void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope)
 {
@@ -78,7 +79,13 @@ void ph_store_read(store_t *store, zend_string *key, zval *rv, zval *this)
 
 void delete_entry(void *entry_void)
 {
-    free((entry_t *)entry_void);
+    entry_t *entry = entry_void;
+
+    if (ENTRY_TYPE(entry) == PH_STORE_FUNC) { // this will still leak for arrays?
+        free(ENTRY_FUNC(entry));
+    }
+
+    free(entry);
 }
 
 void ph_entry_convert(zval *value, entry_t *e)
@@ -114,7 +121,26 @@ void ph_entry_convert(zval *value, entry_t *e)
                 PHP_VAR_UNSERIALIZE_DESTROY(var_hash);
             }
             break;
-        // object...
+        case PH_STORE_FUNC:
+            {
+                zend_function *closure = copy_user_function(ENTRY_FUNC(e), NULL);
+                char *name;
+                size_t name_len;
+
+                zend_create_closure(value, closure, zend_get_executed_scope(), closure->common.scope, NULL);
+                name_len = spprintf(&name, 0, "Closure@%p", zend_get_closure_method_def(value));
+
+                if (!zend_hash_str_update_ptr(EG(function_table), name, name_len, closure)) {
+                    printf("FAILED!\n");
+                }
+
+                efree(name);
+            }
+            break;
+        case IS_OBJECT:
+            {
+                //
+            }
     }
 }
 
@@ -159,6 +185,16 @@ entry_t *create_new_entry(zval *value, uint32_t scope)
                     memcpy(PH_STRV(ENTRY_STRING(e)), ZSTR_VAL(sval), ZSTR_LEN(sval));
 
                     zend_string_free(sval);
+                }
+            }
+            break;
+        case IS_OBJECT:
+            {
+                if (instanceof_function(Z_OBJCE_P(value), zend_ce_closure)) {
+                    ENTRY_TYPE(e) = PH_STORE_FUNC;
+                    ENTRY_FUNC(e) = malloc(sizeof(zend_op_array));
+                    memcpy(ENTRY_FUNC(e), zend_get_closure_method_def(value), sizeof(zend_op_array));
+                    Z_ADDREF_P(value);
                 }
             }
     }
