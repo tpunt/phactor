@@ -895,6 +895,7 @@ PHP_MINIT_FUNCTION(phactor)
     phactor_actor_handlers.offset = XtOffsetOf(actor_t, obj);
     phactor_actor_handlers.write_property = php_actor_write_property;
     phactor_actor_handlers.read_property = php_actor_read_property;
+    phactor_actor_handlers.get_property_ptr_ptr = NULL;
     phactor_actor_handlers.dtor_obj = php_actor_dtor_object_dummy;
     phactor_actor_handlers.free_obj = php_actor_free_object_dummy;
     phactor_actor_handlers.get_debug_info = phactor_actor_get_debug_info;
