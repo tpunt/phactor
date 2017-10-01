@@ -25,10 +25,7 @@
 
 void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope)
 {
-    ph_string_t key;
-
-    ph_string_update(&key, ZSTR_VAL(name), ZSTR_LEN(name));
-    ph_hashtable_insert(&store->props, &key, create_new_entry(value, scope));
+    ph_hashtable_insert(&store->props, ph_string_new(ZSTR_VAL(name), ZSTR_LEN(name)), create_new_entry(value, scope));
 }
 
 void ph_store_to_hashtable(HashTable *ht, store_t *store)
