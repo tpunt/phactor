@@ -23,6 +23,8 @@
 #include "ph_general.h"
 #include "ph_hashtable.h"
 
+struct _actor_t;
+
 typedef struct _store_t {
     zend_class_entry *ce;
     ph_hashtable_t props;
@@ -36,6 +38,7 @@ typedef struct _entry_t {
         double floating;
         ph_string_t string;
         zend_function *func;
+        struct _actor_t *actor;
         // array
         // object
         // resource ?
@@ -44,6 +47,7 @@ typedef struct _entry_t {
 } entry_t;
 
 #define PH_STORE_FUNC 100
+#define PH_STORE_ACTOR 101
 
 #define ENTRY_TYPE(s) (s)->type
 #define ENTRY_STRING(s) (s)->val.string
@@ -51,6 +55,7 @@ typedef struct _entry_t {
 #define ENTRY_DOUBLE(s) (s)->val.floating
 #define ENTRY_BOOL(s) (s)->val.boolean
 #define ENTRY_FUNC(s) (s)->val.func
+#define ENTRY_ACTOR(s) (s)->val.actor
 #define ENTRY_SCOPE(s) (s)->scope
 
 void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope);

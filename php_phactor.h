@@ -166,7 +166,6 @@ typedef struct _actor_system_t {
 
 extern thread_t main_thread;
 extern pthread_mutex_t phactor_task_mutex;
-extern dtor_func_t (default_resource_dtor);
 extern zend_object_handlers phactor_actor_handlers;
 extern zend_object_handlers phactor_actor_system_handlers;
 

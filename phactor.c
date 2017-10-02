@@ -71,7 +71,6 @@ pthread_mutex_t global_actor_id_lock;
 actor_system_t *actor_system;
 int php_shutdown = 0;
 int global_actor_id = 0;
-dtor_func_t (default_resource_dtor);
 zend_object_handlers phactor_actor_handlers;
 zend_object_handlers phactor_actor_system_handlers;
 void ***phactor_instance = NULL;

@@ -197,7 +197,7 @@ void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
             continue;
         }
 
-        if (b->hash == hash && (!b->key || !strcmp(PH_STRV_P(b->key), PH_STRV_P(key)))) {
+        if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
             return b->value;
         }
 
@@ -232,7 +232,7 @@ void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + index;
 
-        if (b->hash == hash && (!b->key || !strcmp(PH_STRV_P(b->key), PH_STRV_P(key)))) {
+        if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
             // @todo free previous value?
             b->value = value;
             break;
@@ -267,7 +267,7 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + index;
 
-        if (b->hash == hash && (!b->key || !strcmp(PH_STRV_P(b->key), PH_STRV_P(key)))) {
+        if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
             dtor_value(b->value);
 
             b->hash = -1; // -1 = tombstone

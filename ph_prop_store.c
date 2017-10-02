@@ -112,7 +112,7 @@ void ph_entry_convert(zval *value, entry_t *e)
                 PHP_VAR_UNSERIALIZE_INIT(var_hash);
 
                 if (!php_var_unserialize(value, &p, p + buf_len, &var_hash)) {
-                    // ...
+                    // @todo handle serialisation failure - is this even possible to hit?
                 }
 
                 PHP_VAR_UNSERIALIZE_DESTROY(var_hash);
@@ -134,9 +134,29 @@ void ph_entry_convert(zval *value, entry_t *e)
                 efree(name);
             }
             break;
+        case PH_STORE_ACTOR:
+            ZVAL_OBJ(value, &ENTRY_ACTOR(e)->obj);
+            // @todo obj->ce will need updating - how to ensure that it is correct
+            // depending upon its usage context? E.g. For property reads, it can
+            // simply be updated here, but what about for message sending?
+
+            // manually increment to prevent refcount from hitting 0 (and therefore
+            // trying to be freed by the GC)
+            ++GC_REFCOUNT(&ENTRY_ACTOR(e)->obj);
+            break;
         case IS_OBJECT:
             {
-                //
+                size_t buf_len = PH_STRL(ENTRY_STRING(e));
+                const unsigned char *p = (const unsigned char *) PH_STRV(ENTRY_STRING(e));
+                php_unserialize_data_t var_hash;
+
+                PHP_VAR_UNSERIALIZE_INIT(var_hash);
+
+                if (!php_var_unserialize(value, &p, p + buf_len, &var_hash)) {
+                    // @todo handle serialisation failure - is this even possible to hit?
+                }
+
+                PHP_VAR_UNSERIALIZE_DESTROY(var_hash);
             }
     }
 }
@@ -192,6 +212,29 @@ entry_t *create_new_entry(zval *value, uint32_t scope)
                     ENTRY_FUNC(e) = malloc(sizeof(zend_op_array));
                     memcpy(ENTRY_FUNC(e), zend_get_closure_method_def(value), sizeof(zend_op_array));
                     Z_ADDREF_P(value);
+                } else if (instanceof_function(Z_OBJCE_P(value), Actor_ce)) {
+                    ENTRY_ACTOR(e) = (actor_t *)((char *)Z_OBJ_P(value) - Z_OBJ_HANDLER_P(value, offset));
+                    ENTRY_TYPE(e) = PH_STORE_ACTOR;
+                } else {
+                    // temporary solution - just serialise it and to the hell with the consequences
+                    smart_str smart = {0};
+                    php_serialize_data_t vars;
+
+                    PHP_VAR_SERIALIZE_INIT(vars);
+                    php_var_serialize(&smart, value, &vars);
+                    PHP_VAR_SERIALIZE_DESTROY(vars);
+
+                    if (EG(exception)) {
+                        smart_str_free(&smart);
+                    } else {
+                        zend_string *sval = smart_str_extract(&smart);
+
+                        PH_STRL(ENTRY_STRING(e)) = ZSTR_LEN(sval);
+                        PH_STRV(ENTRY_STRING(e)) = malloc(ZSTR_LEN(sval));
+                        memcpy(PH_STRV(ENTRY_STRING(e)), ZSTR_VAL(sval), ZSTR_LEN(sval));
+
+                        zend_string_free(sval);
+                    }
                 }
             }
     }

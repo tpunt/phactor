@@ -31,5 +31,6 @@ typedef struct _ph_string_t {
 
 ph_string_t *ph_string_new(char *s, int len);
 void ph_string_update(ph_string_t *phstr, char *s, int len);
+int ph_str_eq(ph_string_t *phstr1, ph_string_t *phstr2);
 
 #endif

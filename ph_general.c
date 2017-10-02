@@ -38,3 +38,8 @@ void ph_string_update(ph_string_t *phstr, char *s, int len)
     PH_STRV_P(phstr) = malloc(sizeof(char) * len);
     memcpy(PH_STRV_P(phstr), s, len);
 }
+
+int ph_str_eq(ph_string_t *phstr1, ph_string_t *phstr2)
+{
+    return PH_STRL_P(phstr1) == PH_STRL_P(phstr2) && !strncmp(PH_STRV_P(phstr1), PH_STRV_P(phstr2), PH_STRL_P(phstr2));
+}
