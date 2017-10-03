@@ -825,14 +825,17 @@ HashTable *phactor_actor_get_debug_info(zval *actor_zval, int *is_temp)
 
 HashTable *phactor_actor_get_properties(zval *actor_zval)
 {
-    zend_object *actor_obj = Z_OBJ_P(actor_zval);
-    actor_t *actor = get_actor_from_object(actor_obj);
+    HashTable *ht = emalloc(sizeof(HashTable));
 
-    rebuild_object_properties(actor_obj);
+    zend_hash_init(ht, 8, NULL, ZVAL_PTR_DTOR, 0);
+    ph_store_to_hashtable(ht, &get_actor_from_zval(actor_zval)->store);
 
-    ph_store_to_hashtable(actor_obj->properties, &actor->store);
+    return ht;
+}
 
-    return zend_std_get_properties(actor_zval);
+HashTable *phactor_actor_get_gc(zval *object, zval **table, int *n)
+{
+    return NULL;
 }
 
 void php_actor_write_property(zval *actor_zval, zval *member, zval *value, void **cache)
@@ -894,6 +897,7 @@ PHP_MINIT_FUNCTION(phactor)
     phactor_actor_handlers.free_obj = php_actor_free_object_dummy;
     phactor_actor_handlers.get_debug_info = phactor_actor_get_debug_info;
     phactor_actor_handlers.get_properties = phactor_actor_get_properties;
+    phactor_actor_handlers.get_gc = phactor_actor_get_gc;
 
     PHACTOR_G(phactor_instance) = TSRMLS_CACHE;
 
