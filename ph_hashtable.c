@@ -309,7 +309,7 @@ void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
             continue;
         }
 
-        ph_entry_convert(&value, b->value);
+        ph_convert_entry_to_zval(&value, b->value);
 
         _zend_hash_str_add(ht, PH_STRV_P(b->key), PH_STRL_P(b->key), &value ZEND_FILE_LINE_CC);
     }

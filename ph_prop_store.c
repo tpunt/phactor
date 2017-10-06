@@ -25,7 +25,18 @@
 
 void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope)
 {
-    ph_hashtable_insert(&store->props, ph_string_new(ZSTR_VAL(name), ZSTR_LEN(name)), create_new_entry(value, scope));
+    ph_string_t key;
+
+    PH_STRL(key) = ZSTR_LEN(name);
+    PH_STRV(key) = ZSTR_VAL(name);
+
+    entry_t *entry = ph_hashtable_search(&store->props, &key);
+
+    if (entry) {
+        ph_entry_update(entry, value);
+    } else {
+        ph_hashtable_insert(&store->props, ph_string_new(ZSTR_VAL(name), ZSTR_LEN(name)), create_new_entry(value, scope));
+    }
 }
 
 void ph_store_to_hashtable(HashTable *ht, store_t *store)
@@ -42,50 +53,61 @@ void ph_store_read(store_t *store, zend_string *key, zval *rv, zval *this)
 
     entry_t *e = ph_hashtable_search(&store->props, &phstr);
 
-    if (e) {
-        switch (ENTRY_SCOPE(e)) {
-            case ZEND_ACC_SHADOW:
-                zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
-                break;
-            case ZEND_ACC_PRIVATE | ZEND_ACC_CHANGED:
-            case ZEND_ACC_PRIVATE:
-                if (!this || Z_OBJCE_P(this) != store->ce) {
-                    zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
-                } else {
-                    ph_entry_convert(rv, e);
-                }
-                break;
-            case ZEND_ACC_PROTECTED:
-                if (!this || !instanceof_function(Z_OBJCE_P(this), store->ce)) {
-                    zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is protected\n", ZSTR_VAL(key));
-                } else {
-                    ph_entry_convert(rv, e);
-                }
-                break;
-            case ZEND_ACC_PUBLIC:
-                ph_entry_convert(rv, e);
-                break;
-            default:
-                php_printf("Unknown scope used (%d)\n", ENTRY_SCOPE(e));
-                assert(0);
-        }
-    } else {
+    if (!e) {
         zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is undefined\n", ZSTR_VAL(key));
+        return;
+    }
+
+    switch (ENTRY_SCOPE(e)) {
+        case ZEND_ACC_SHADOW:
+            zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
+            break;
+        case ZEND_ACC_PRIVATE | ZEND_ACC_CHANGED:
+        case ZEND_ACC_PRIVATE:
+            if (!this || Z_OBJCE_P(this) != store->ce) {
+                zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
+            } else {
+                ph_convert_entry_to_zval(rv, e);
+            }
+            break;
+        case ZEND_ACC_PROTECTED:
+            if (!this || !instanceof_function(Z_OBJCE_P(this), store->ce)) {
+                zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is protected\n", ZSTR_VAL(key));
+            } else {
+                ph_convert_entry_to_zval(rv, e);
+            }
+            break;
+        case ZEND_ACC_PUBLIC:
+            ph_convert_entry_to_zval(rv, e);
+            break;
+        default:
+            php_printf("Unknown scope used (%d)\n", ENTRY_SCOPE(e));
+            assert(0);
     }
 }
 
-void delete_entry(void *entry_void)
+void ph_entry_delete(void *entry_void)
 {
     entry_t *entry = entry_void;
 
-    if (ENTRY_TYPE(entry) == PH_STORE_FUNC) { // this will still leak for arrays?
-        free(ENTRY_FUNC(entry));
-    }
+    ph_entry_delete_value(entry);
 
     free(entry);
 }
 
-void ph_entry_convert(zval *value, entry_t *e)
+void ph_entry_delete_value(entry_t *entry)
+{
+    switch (ENTRY_TYPE(entry)) {
+        case PH_STORE_FUNC:
+            free(ENTRY_FUNC(entry));
+            break;
+        case IS_ARRAY:
+        case IS_STRING:
+            free(PH_STRV(ENTRY_STRING(entry)));
+    }
+}
+
+void ph_convert_entry_to_zval(zval *value, entry_t *e)
 {
     switch (ENTRY_TYPE(e)) {
         case IS_STRING:
@@ -161,12 +183,9 @@ void ph_entry_convert(zval *value, entry_t *e)
     }
 }
 
-entry_t *create_new_entry(zval *value, uint32_t scope)
+void ph_convert_zval_to_entry(entry_t *e, zval *value)
 {
-    entry_t *e = malloc(sizeof(entry_t));
-
     ENTRY_TYPE(e) = Z_TYPE_P(value);
-    ENTRY_SCOPE(e) = scope;
 
     switch (Z_TYPE_P(value)) {
         case IS_STRING:
@@ -238,6 +257,21 @@ entry_t *create_new_entry(zval *value, uint32_t scope)
                 }
             }
     }
+}
+
+void ph_entry_update(entry_t *entry, zval *value)
+{
+    ph_entry_delete_value(entry);
+    ph_convert_zval_to_entry(entry, value);
+}
+
+entry_t *create_new_entry(zval *value, uint32_t scope)
+{
+    entry_t *e = malloc(sizeof(entry_t));
+
+    ENTRY_SCOPE(e) = scope;
+
+    ph_convert_zval_to_entry(e, value);
 
     return e;
 }

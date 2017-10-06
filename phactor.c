@@ -158,7 +158,7 @@ void process_message(task_t *task)
     pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
     ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
-    ph_entry_convert(&message_zval, message->message);
+    ph_convert_entry_to_zval(&message_zval, message->message);
 
     call_receive_method(&for_actor->obj, &return_value, &from_actor_zval, &message_zval);
 
@@ -168,7 +168,7 @@ void process_message(task_t *task)
 
     free(PH_STRV(message->from_actor_ref));
     zval_ptr_dtor(&message_zval);
-    delete_entry(message->message);
+    ph_entry_delete(message->message);
     free(message);
 
     zval_ptr_dtor(&from_actor_zval);
@@ -512,7 +512,7 @@ void php_actor_free_object(zend_object *obj)
 {
     actor_t *actor = get_actor_from_object(obj);
 
-    ph_hashtable_destroy(&actor->store.props, delete_entry);
+    ph_hashtable_destroy(&actor->store.props, ph_entry_delete);
 
     remove_actor(actor);
 }
@@ -524,7 +524,7 @@ void delete_actor(void *actor_void)
     // GC_REFCOUNT(&actor->obj) = 0; // @todo needed?
 
     php_actor_dtor_object(&actor->obj);
-    ph_hashtable_destroy(&actor->store.props, delete_entry);
+    ph_hashtable_destroy(&actor->store.props, ph_entry_delete);
 
     free(PH_STRV(actor->ref));
     efree(actor);
