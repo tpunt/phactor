@@ -289,31 +289,8 @@ task_t *dequeue_task(void)
     task_t *task = PHACTOR_G(actor_system)->tasks;
     task_t *prev_task = task;
 
-    if (!task) {
-        pthread_mutex_unlock(&PHACTOR_G(phactor_task_mutex));
-        return NULL;
-    }
-
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-    if (task->task_type & SEND_MESSAGE_TASK || !task->task.pmt.for_actor->in_execution) {
-        if (task->task_type & PROCESS_MESSAGE_TASK) {
-            task->task.pmt.for_actor->in_execution = 1;
-        }
-        pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
-
-        PHACTOR_G(actor_system)->tasks = task->next_task;
-
-        pthread_mutex_unlock(&PHACTOR_G(phactor_task_mutex));
-        return task;
-    }
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
-
     while (1) {
-        if (!task) {
-            break;
-        }
-
-        if (task->task_type & SEND_MESSAGE_TASK) {
+        if (!task || task->task_type & SEND_MESSAGE_TASK) {
             break;
         }
 
@@ -330,7 +307,11 @@ task_t *dequeue_task(void)
     }
 
     if (task) {
-        prev_task->next_task = task->next_task;
+        if (prev_task == task) {
+            PHACTOR_G(actor_system)->tasks = task->next_task;
+        } else {
+            prev_task->next_task = task->next_task;
+        }
     }
 
     pthread_mutex_unlock(&PHACTOR_G(phactor_task_mutex));
