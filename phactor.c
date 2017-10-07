@@ -550,7 +550,6 @@ void php_actor_system_free_object(zend_object *obj)
     free(PHACTOR_G(actor_system)->actor_removals[PHACTOR_G(main_thread).offset].actors);
     free(PHACTOR_G(actor_system)->actor_removals);
     free(PHACTOR_G(actor_system)->actors.values);
-    efree(PHACTOR_G(actor_system));
 }
 
 // @todo currently impossible with current ZE
