@@ -69,30 +69,22 @@ void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *))
 
 void ph_hashtable_insert_ind(ph_hashtable_t *ht, int hash, void *value)
 {
-    if (ph_hashtable_search_ind(ht, hash)) { // @todo be more strict? I.e. only use insert for new values?
-        ph_hashtable_update_ind(ht, hash, value);
-    } else {
-        // resize at 75% capacity
-        if (ht->n_used == ht->size - (ht->size >> 2)) {
-            ph_hashtable_resize(ht);
-        }
-
-        ph_hashtable_insert_direct(ht, NULL, hash, value);
+    // resize at 75% capacity
+    if (ht->n_used == ht->size - (ht->size >> 2)) {
+        ph_hashtable_resize(ht);
     }
+
+    ph_hashtable_insert_direct(ht, NULL, hash, value);
 }
 
 void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value)
 {
-    if (ph_hashtable_search(ht, key)) { // @todo be more strict? I.e. only use insert for new values?
-        ph_hashtable_update(ht, key, value);
-    } else {
-        // resize at 75% capacity
-        if (ht->n_used == ht->size - (ht->size >> 2)) {
-            ph_hashtable_resize(ht);
-        }
-
-        ph_hashtable_insert_direct(ht, key, get_hash(key), value);
+    // resize at 75% capacity
+    if (ht->n_used == ht->size - (ht->size >> 2)) {
+        ph_hashtable_resize(ht);
     }
+
+    ph_hashtable_insert_direct(ht, key, get_hash(key), value);
 }
 
 static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value)
