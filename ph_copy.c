@@ -259,6 +259,7 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_o
 
     if (old_op_array->static_variables) {
         ALLOC_HASHTABLE(new_op_array->static_variables);
+        zend_hash_init(new_op_array->static_variables, 4, NULL, ZVAL_PTR_DTOR, 0);
         zend_hash_copy(new_op_array->static_variables, old_op_array->static_variables, NULL);
     } else {
         new_op_array->static_variables = NULL;
