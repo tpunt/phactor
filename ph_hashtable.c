@@ -119,9 +119,9 @@ static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int
             key = tmp_key;
             value = tmp_value;
             variance = tmp_variance;
-        } else {
-            ++variance;
         }
+
+        ++variance;
 
         if (++index == ht->size) {
             index -= ht->size;
@@ -138,7 +138,7 @@ static void ph_hashtable_resize(ph_hashtable_t *ht)
 
     ht->size <<= 1;
     ht->n_used = 0;
-    ht->values = malloc(sizeof(ph_bucket_t) * ht->size);
+    ht->values = calloc(sizeof(ph_bucket_t), ht->size);
 
     ph_hashtable_rehash(ht, old_values, old_size);
 
