@@ -371,7 +371,10 @@ void set_actor_ref(ph_string_t *ref)
 
 actor_t *get_actor_from_ref(ph_string_t *actor_ref)
 {
-    return ph_hashtable_search(&PHACTOR_G(actor_system)->actors, actor_ref);
+    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+    actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors, actor_ref);
+    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+    return actor;
 }
 
 actor_t *get_actor_from_object(zend_object *actor_obj)
