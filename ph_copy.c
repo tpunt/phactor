@@ -24,10 +24,10 @@ static zend_function *copy_function(zend_function *old_func, zend_class_entry *n
 static zend_function *copy_internal_function(zend_function *old_func);
 static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32_t num_args);
 static void copy_znode_op(znode_op *new_znode, znode_op *old_znode);
-static zend_op *copy_zend_op(zend_op *old_opcodes, uint32_t count);
+static zend_op *copy_zend_op(zend_op_array *new_op_array, zend_op_array *old_op_array);
 static zend_live_range *copy_zend_live_range(zend_live_range *old_live_range, uint32_t count);
 static zend_try_catch_element *copy_zend_try_catch_element(zend_try_catch_element *old_try_catch, uint32_t count);
-static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array);
+static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array, zend_class_entry *new_ce);
 static void copy_ini_directives(HashTable *new_ini_directives, HashTable *old_ini_directives);
 static void copy_included_files(HashTable *new_included_files, HashTable old_included_files);
 static void copy_global_constants(HashTable *new_constants, HashTable *old_constants);
@@ -207,11 +207,11 @@ static void copy_znode_op(znode_op *new_znode, znode_op *old_znode)
     memcpy(new_znode, old_znode, sizeof(znode_op));
 }
 
-static zend_op *copy_zend_op(zend_op *old_opcodes, uint32_t count)
+static zend_op *copy_zend_op(zend_op_array *new_op_array, zend_op_array *old_op_array)
 {
-    zend_op *new_opcodes = emalloc(sizeof(zend_op) * count);
+    zend_op *new_opcodes = emalloc(sizeof(zend_op) * old_op_array->last_literal);
 
-    memcpy(new_opcodes, old_opcodes, sizeof(zend_op) * count);
+    memcpy(new_opcodes, old_op_array->opcodes, sizeof(zend_op) * old_op_array->last_literal);
 
     return new_opcodes;
 }
@@ -242,12 +242,21 @@ static zend_try_catch_element *copy_zend_try_catch_element(zend_try_catch_elemen
     return new_try_catch;
 }
 
-static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array)
+static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array, zend_class_entry *new_ce)
 {
+    new_op_array->type = old_op_array->type;
+    memcpy(new_op_array->arg_flags, old_op_array->arg_flags, sizeof(zend_uchar) * 3);
+    new_op_array->fn_flags = old_op_array->fn_flags;
+    new_op_array->function_name = zend_string_dup(old_op_array->function_name, 0);
+    new_op_array->scope = new_ce;
+    new_op_array->prototype = NULL;
+    new_op_array->num_args = old_op_array->num_args;
+    new_op_array->required_num_args = old_op_array->required_num_args;
+    new_op_array->arg_info = copy_function_arg_info(old_op_array->arg_info, old_op_array->num_args);
     new_op_array->refcount = emalloc(sizeof(uint32_t));
     *new_op_array->refcount = 1;
     new_op_array->last = old_op_array->last;
-    new_op_array->opcodes = copy_zend_op(old_op_array->opcodes, old_op_array->last);
+
     new_op_array->last_var = old_op_array->last_var;
     new_op_array->T = old_op_array->T;
     new_op_array->vars = emalloc(sizeof(zend_string *) * old_op_array->last_var);
@@ -278,10 +287,22 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_o
     new_op_array->early_binding = old_op_array->early_binding;
     new_op_array->last_literal = old_op_array->last_literal;
     new_op_array->literals = emalloc(sizeof(zval) * old_op_array->last_literal);
+    memcpy(new_op_array->literals, old_op_array->literals, sizeof(zval) * old_op_array->last_literal);
 
     for (int i = 0; i < old_op_array->last_literal; ++i) {
-        ZVAL_DUP(new_op_array->literals + i, old_op_array->literals + i); // should be stored agnostically?
+        switch (Z_TYPE(old_op_array->literals[i])) {
+            case IS_ARRAY:
+                ZVAL_DUP(new_op_array->literals + i, old_op_array->literals + i);
+                break;
+#if PHP_VERSION_ID < 70300
+            case IS_CONSTANT:
+#endif
+            case IS_CONSTANT_AST:
+                zval_copy_ctor(new_op_array->literals + i);
+        }
     }
+
+    new_op_array->opcodes = copy_zend_op(new_op_array, old_op_array);
 
     new_op_array->cache_size = old_op_array->cache_size;
     new_op_array->run_time_cache = NULL;
@@ -292,29 +313,7 @@ zend_function *copy_user_function(zend_function *old_func, zend_class_entry *new
 {
     zend_function *new_func = zend_arena_alloc(&CG(arena), sizeof(zend_function));
 
-    // new_func->common.quick_arg_flags = old_func->common.quick_arg_flags;
-    new_func->common.type = old_func->common.type;
-    memcpy(new_func->common.arg_flags, old_func->common.arg_flags, sizeof(zend_uchar) * 3);
-    new_func->common.fn_flags = old_func->common.fn_flags;
-    new_func->common.function_name = zend_string_dup(old_func->common.function_name, 0);
-    new_func->common.scope = old_func->common.scope;
-    new_func->common.prototype = NULL;
-    new_func->common.num_args = old_func->common.num_args;
-    new_func->common.required_num_args = old_func->common.required_num_args;
-    new_func->common.arg_info = copy_function_arg_info(old_func->common.arg_info, old_func->common.num_args);
-
-    copy_zend_op_array(&new_func->op_array, &old_func->op_array);
-
-    if (new_func->common.scope != new_ce) {
-        zend_op_array *op_array = &new_func->op_array;
-
-        op_array->run_time_cache = NULL;
-        new_func->common.scope = new_ce; // should the scope be prepared instead?
-
-        // @todo setting the runtime cache causes heap corruption issues...
-        // op_array->run_time_cache = ecalloc(op_array->cache_size, 1);
-        // op_array->fn_flags |= ZEND_ACC_NO_RT_ARENA;
-    }
+    copy_zend_op_array(&new_func->op_array, &old_func->op_array, new_ce);
 
     return new_func;
 }
@@ -513,7 +512,7 @@ static void copy_functions(HashTable *new_func_table, HashTable *old_func_table,
     zend_function *old_func;
 
     ZEND_HASH_FOREACH_STR_KEY_PTR(old_func_table, old_func_name, old_func) {
-        if (new_ce) {
+        if (new_ce) { // new_ce || old_func-type == ZEND_USER_FUNCTION ?
             zend_string *new_func_name = zend_string_dup(old_func_name, 0);
             zend_function *new_func = copy_function(old_func, new_ce);
 
