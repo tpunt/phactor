@@ -242,6 +242,60 @@ static zend_try_catch_element *copy_zend_try_catch_element(zend_try_catch_elemen
     return new_try_catch;
 }
 
+// only applicable to PHP 7.2
+#include "Zend/zend_ast.h"
+
+/* taken from Zend/zend_ast.c:454 - a duped copy of the zval needs to be performed*/
+static inline size_t zend_ast_size(uint32_t children) {
+	return sizeof(zend_ast) - sizeof(zend_ast *) + sizeof(zend_ast *) * children;
+}
+
+static inline size_t zend_ast_list_size(uint32_t children) {
+	return sizeof(zend_ast_list) - sizeof(zend_ast *) + sizeof(zend_ast *) * children;
+}
+
+ZEND_API zend_ast *ph_zend_ast_copy(zend_ast *ast)
+{
+    if (ast->kind == ZEND_AST_ZVAL) {
+        zend_ast_zval *new = emalloc(sizeof(zend_ast_zval));
+
+        new->kind = ZEND_AST_ZVAL;
+        new->attr = ast->attr;
+
+        ZVAL_DUP(&new->val, zend_ast_get_zval(ast));
+
+        return (zend_ast *) new;
+    }
+
+    if (zend_ast_is_list(ast)) {
+        zend_ast_list *list = zend_ast_get_list(ast);
+        zend_ast_list *new = emalloc(zend_ast_list_size(list->children));
+        uint32_t i;
+
+        new->kind = list->kind;
+        new->attr = list->attr;
+        new->children = list->children;
+
+        for (i = 0; i < list->children; i++) {
+            new->child[i] = ph_zend_ast_copy(list->child[i]);
+        }
+
+        return (zend_ast *) new;
+    }
+
+    uint32_t i, children = zend_ast_get_num_children(ast);
+    zend_ast *new = emalloc(zend_ast_size(children));
+
+    new->kind = ast->kind;
+    new->attr = ast->attr;
+
+    for (i = 0; i < children; i++) {
+        new->child[i] = ph_zend_ast_copy(ast->child[i]);
+    }
+
+    return new;
+}
+
 static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array, zend_class_entry *new_ce)
 {
     new_op_array->type = old_op_array->type;
@@ -296,9 +350,11 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_o
                 break;
 #if PHP_VERSION_ID < 70300
             case IS_CONSTANT:
+                zval_copy_ctor(new_op_array->literals + i); // safe because a hard copy of the string is performed
+                break;
 #endif
             case IS_CONSTANT_AST:
-                zval_copy_ctor(new_op_array->literals + i);
+                ZVAL_NEW_AST(new_op_array->literals + i, ph_zend_ast_copy(Z_ASTVAL(new_op_array->literals[i])));
         }
     }
 
