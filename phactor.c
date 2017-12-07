@@ -38,7 +38,8 @@
 ZEND_DECLARE_MODULE_GLOBALS(phactor)
 
 void *scheduler();
-void process_message(task_t *task);
+void process_message(/*task_t *task*/);
+void resume_actor(actor_t *actor);
 void enqueue_task(task_t *task);
 task_t *dequeue_task(void);
 void call_receive_method(zend_object *object, zval *retval_ptr, zval *from_actor, zval *message);
@@ -47,6 +48,7 @@ actor_t *get_actor_from_object(zend_object *actor_obj);
 actor_t *get_actor_from_zval(zval *actor_zval_obj);
 task_t *create_send_message_task(char *from_actor_ref, char *to_actor_ref, zval *message);
 task_t *create_process_message_task(actor_t *for_actor);
+task_t *create_resume_actor_task(actor_t *actor);
 zend_object* phactor_actor_ctor(zend_class_entry *entry);
 void delete_actor(void *actor);
 void add_new_actor(actor_t *new_actor);
@@ -61,6 +63,7 @@ void mark_actor_for_removal(actor_t *actor);
 #define ACTOR_REF_LEN 33
 
 static __thread int thread_offset;
+static __thread task_t *currently_processing_task;
 
 thread_t main_thread;
 pthread_mutex_t phactor_mutex;
@@ -77,6 +80,29 @@ void ***phactor_instance = NULL;
 
 zend_class_entry *ActorSystem_ce;
 zend_class_entry *Actor_ce;
+
+void save_executor_globals(zend_executor_globals *eg)
+{
+    // eg->current_execute_data = EG(current_execute_data);
+	*eg = *TSRMG_BULK_STATIC(executor_globals_id, zend_executor_globals *);
+    // eg->vm_stack_top = EG(vm_stack_top);
+    // eg->vm_stack_end = EG(vm_stack_end);
+    // eg->vm_stack = EG(vm_stack);
+    // eg->fake_scope = EG(fake_scope);
+    //
+}
+
+void restore_executor_globals(zend_executor_globals *eg)
+{
+    zend_executor_globals *ceg = TSRMG_BULK_STATIC(executor_globals_id, zend_executor_globals *);
+
+    EG(current_execute_data) = eg->current_execute_data;
+    // EG(vm_stack_top) = eg->vm_stack_top;
+    // EG(vm_stack_end) = eg->vm_stack_end;
+    // EG(vm_stack) = eg->vm_stack;
+    // EG(fake_scope) = eg->fake_scope;
+    //
+}
 
 void *worker_function(thread_t *phactor_thread)
 {
@@ -100,6 +126,8 @@ void *worker_function(thread_t *phactor_thread)
     ++PHACTOR_G(actor_system)->prepared_thread_count;
     pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
 
+    save_executor_globals(&phactor_thread->eg);
+
     while (1) {
         perform_actor_removals();
 
@@ -120,25 +148,56 @@ void *worker_function(thread_t *phactor_thread)
                 send_message(current_task);
                 break;
             case PROCESS_MESSAGE_TASK:
-                process_message(current_task);
+                currently_processing_task = current_task; // tls for the currently processing actor
+                actor_t *for_actor = current_task->task.pmt.for_actor;
+                // swap into process_message
+                ph_swap_context(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context, &for_actor->actor_context);
+
+                pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+                if (for_actor->state == ACTIVE_STATE) { // update actor state if finished
+                    // hit if actor did not block at all during execution
+                    ph_reset_context(&for_actor->actor_context);
+                    if (for_actor->mailbox) {
+                        enqueue_task(create_process_message_task(for_actor));
+                    }
+                    for_actor->state = NEW_STATE;
+                }
+                pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
                 break;
+            case RESUME_ACTOR_TASK:
+                pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+                current_task->task.rat.actor->state = ACTIVE_STATE;
+                pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+                resume_actor(current_task->task.rat.actor);
+
+                pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+                if (for_actor->state == ACTIVE_STATE) { // update actor state if finished
+                    // hit if actor was blocking at all during execution
+                    ph_reset_context(&for_actor->actor_context);
+                    if (for_actor->mailbox) {
+                        enqueue_task(create_process_message_task(for_actor));
+                    }
+                    for_actor->state = NEW_STATE;
+                }
+                pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
         }
 
         free(current_task);
     }
 
-    // zend_hash_apply(&EG(regular_list), pthreads_resources_cleanup); // ignore resource for now
-
     PG(report_memleaks) = 0;
+
+    // Block here to prevent premature freeing of actors when the could be being
+    // used by other threads
+    pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
+    ++PHACTOR_G(actor_system)->finished_thread_count;
+    pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+
+    while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->finished_thread_count);
 
     pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, delete_actor, actor_t *, thread_offset, thread_offset);
     pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
-
-    // block here until all other threads have finished executing? This will prevent
-    // prematurely freeing actors that are still be executed by other threads
-
-    // free all actors associated with this interpreter instance
 
     php_request_shutdown(NULL);
 
@@ -147,14 +206,16 @@ void *worker_function(thread_t *phactor_thread)
     pthread_exit(NULL);
 }
 
-void process_message(task_t *task)
+void process_message(/*task_t *task*/)
 {
+    task_t *task = currently_processing_task;
     actor_t *for_actor = task->task.pmt.for_actor;
     zval return_value, from_actor_zval, message_zval;
 
     pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     message_t *message = for_actor->mailbox;
     for_actor->mailbox = for_actor->mailbox->next_message;
+    for_actor->state = ACTIVE_STATE;
     pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
     ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
@@ -162,17 +223,15 @@ void process_message(task_t *task)
 
     call_receive_method(&for_actor->obj, &return_value, &from_actor_zval, &message_zval);
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-    for_actor->in_execution = 0;
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
-
     free(PH_STRV(message->from_actor_ref));
     zval_ptr_dtor(&message_zval);
     ph_entry_delete(message->message);
     free(message);
 
     zval_ptr_dtor(&from_actor_zval);
-    zval_ptr_dtor(&return_value); // @todo how to handle the return value?
+    zval_ptr_dtor(&return_value);
+
+    ph_set_context(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context);
 }
 
 void send_message(task_t *task)
@@ -188,10 +247,13 @@ void send_message(task_t *task)
     free(PH_STRV(task->task.smt.to_actor_ref));
 }
 
-/*
-Add the message (containing the from_actor and message) to the to_actor's mailbox.
-Enqueue the to_actor as a new task to have its mailbox processed.
-*/
+void resume_actor(actor_t *actor)
+{
+    restore_executor_globals(&actor->eg);
+    // swap back into receive_block
+    ph_swap_context(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context, &actor->actor_context);
+}
+
 void send_local_message(actor_t *to_actor, task_t *task)
 {
     message_t *new_message = create_new_message(&task->task.smt.from_actor_ref, task->task.smt.message);
@@ -210,9 +272,14 @@ void send_local_message(actor_t *to_actor, task_t *task)
         current_message->next_message = new_message;
     }
 
+    if (to_actor->state != ACTIVE_STATE && !to_actor->mailbox->next_message) {
+        if (to_actor->state == NEW_STATE) {
+            enqueue_task(create_process_message_task(to_actor));
+        } else {
+            enqueue_task(create_resume_actor_task(to_actor));
+        }
+    }
     pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
-
-    enqueue_task(create_process_message_task(to_actor));
 }
 
 void send_remote_message(task_t *task)
@@ -263,6 +330,17 @@ task_t *create_process_message_task(actor_t *for_actor)
     return new_task;
 }
 
+task_t *create_resume_actor_task(actor_t *actor)
+{
+    task_t *new_task = malloc(sizeof(task_t));
+
+    new_task->task.rat.actor = actor;
+    new_task->task_type = RESUME_ACTOR_TASK;
+    new_task->next_task = NULL;
+
+    return new_task;
+}
+
 void enqueue_task(task_t *new_task)
 {
     pthread_mutex_lock(&PHACTOR_G(phactor_task_mutex));
@@ -287,31 +365,9 @@ task_t *dequeue_task(void)
     pthread_mutex_lock(&PHACTOR_G(phactor_task_mutex));
 
     task_t *task = PHACTOR_G(actor_system)->tasks;
-    task_t *prev_task = task;
-
-    while (1) {
-        if (!task || task->task_type & SEND_MESSAGE_TASK) {
-            break;
-        }
-
-        pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-        if (!task->task.pmt.for_actor->in_execution) {
-            task->task.pmt.for_actor->in_execution = 1;
-            pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
-            break;
-        }
-        pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
-
-        prev_task = task;
-        task = task->next_task;
-    }
 
     if (task) {
-        if (prev_task == task) {
-            PHACTOR_G(actor_system)->tasks = task->next_task;
-        } else {
-            prev_task->next_task = task->next_task;
-        }
+        PHACTOR_G(actor_system)->tasks = task->next_task;
     }
 
     pthread_mutex_unlock(&PHACTOR_G(phactor_task_mutex));
@@ -390,7 +446,7 @@ actor_t *get_actor_from_zval(zval *actor_zval_obj)
 void initialise_actor_system()
 {
     PHACTOR_G(actor_system)->tasks = NULL;
-    PHACTOR_G(actor_system)->thread_count = 1;//sysconf(_SC_NPROCESSORS_ONLN);
+    PHACTOR_G(actor_system)->thread_count = THREAD_COUNT;
 
     PHACTOR_G(main_thread).id = (ulong) pthread_self();
     PHACTOR_G(main_thread).ls = TSRMLS_CACHE;
@@ -536,19 +592,37 @@ void php_actor_system_free_object(zend_object *obj)
     free(PHACTOR_G(actor_system)->actors.values);
 }
 
-// @todo currently impossible with current ZE
 void receive_block(zval *actor_zval, zval *return_value)
 {
-    // actor_t *actor = get_actor_from_zval(actor_zval);
+    actor_t *actor = get_actor_from_zval(actor_zval);
 
-    // zend_execute_data *execute_data = EG(current_execute_data);
+    if (thread_offset == PHACTOR_G(actor_system)->thread_count) { // if we are in the main thread
+        zend_throw_exception(zend_ce_exception, "Trying to receive a message when not in the context of an Actor.", 0);
+        return;
+    }
 
-    // actor->state = zend_freeze_call_stack(EG(current_execute_data));
-    // actor->return_value = actor_zval; // tmp
+    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+    actor->vm_stack_thread_offset = thread_offset;
+    save_executor_globals(&actor->eg);
+    restore_executor_globals(&PHACTOR_G(actor_system)->worker_threads[thread_offset].eg);
+    actor->state = IDLE_STATE;
 
-    // EG(current_execute_data) = NULL;
+    // possible optimisation: if task queue is empty, just skip the next 7 lines
+    if (actor->mailbox) { // @todo check send_local_message to see if this conflicts with it
+        enqueue_task(create_resume_actor_task(actor));
+    }
+    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
-    // return PHACTOR_ZG(current_message_value); // not the solution...
+    ph_swap_context(&actor->actor_context, &PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context);
+
+    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+    message_t *message = actor->mailbox;
+    actor->mailbox = actor->mailbox->next_message;
+    actor->state = ACTIVE_STATE;
+    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+
+    ph_convert_entry_to_zval(return_value, message->message);
+    free(message);
 }
 
 void force_shutdown_actor_system()
@@ -744,10 +818,19 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     }
 
     /*
-    The following prevents an actor that has been created and not used from being
-    instantly destroyed by the VM (given that it will be a TMP value).
+    Prevents an actor from being destroyed automatically.
     */
-    ++GC_REFCOUNT(&new_actor->obj);
+    // ++GC_REFCOUNT(&new_actor->obj);
+    new_actor->state = NEW_STATE;
+
+    /*
+    Because we avoid creating a separate actor object per thread (which would be
+    very expensive in terms of time and space), race conditions occur on the RC
+    of an object (such as an actor sending messages to itself). So we set it to
+    INT_MAX for now as a temporary workaround. Really, we need something like
+    "interned objects"
+    */
+    GC_REFCOUNT(&new_actor->obj) = INT_MAX; // testing
 
     PH_STRL(new_actor->ref) = ACTOR_REF_LEN;
     PH_STRV(new_actor->ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
@@ -756,6 +839,8 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     new_actor->store.ce = entry;
     ph_hashtable_init(&new_actor->store.props, 8);
     new_actor->store.props.flags |= FREE_KEYS;
+
+    ph_init_context(&new_actor->actor_context, process_message);
 
     zend_string *key;
     zend_property_info *value;

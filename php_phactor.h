@@ -78,6 +78,7 @@ typedef struct _actor_t actor_t;
 
 #include "ph_general.h"
 #include "ph_prop_store.h"
+#include "ph_context.h"
 
 extern zend_class_entry *ActorSystem_ce;
 extern zend_class_entry *Actor_ce;
@@ -90,10 +91,13 @@ extern zend_class_entry *Actor_ce;
 ZEND_TSRMLS_CACHE_EXTERN()
 #endif
 
+//sysconf(_SC_NPROCESSORS_ONLN);
+#define THREAD_COUNT 10
 
 
 #define PROCESS_MESSAGE_TASK 1
 #define SEND_MESSAGE_TASK 2
+#define RESUME_ACTOR_TASK 3
 
 #define PHACTOR_CTX(ls, id, type, element) (((type) (*((void ***) ls))[TSRM_UNSHUFFLE_RSRC_ID(id)])->element)
 #define PHACTOR_EG(ls, v) PHACTOR_CTX(ls, executor_globals_id, zend_executor_globals*, v)
@@ -101,9 +105,14 @@ ZEND_TSRMLS_CACHE_EXTERN()
 #define PHACTOR_SG(ls, v) PHACTOR_CTX(ls, sapi_globals_id, sapi_globals_struct*, v)
 // shortcut macros of PHACTOR_MAIN_EG et al.?
 
+typedef enum _actor_state_t {
+    NEW_STATE,   // not waiting - starts a fresh context
+    IDLE_STATE,  // waiting for something - needs context restoring
+    ACTIVE_STATE // in execution - prevents parallel execution of an actor
+} actor_state_t;
 
 typedef struct _message_t {
-    ph_string_t from_actor_ref;
+    ph_string_t from_actor_ref; // could just be a pointer - what about remote actors?
     entry_t *message; // why the separate allocation?
     struct _message_t *next_message;
 } message_t;
@@ -111,9 +120,13 @@ typedef struct _message_t {
 struct _actor_t {
     ph_string_t ref;
     message_t *mailbox;
-    zend_execute_data *state;
-    zend_bool in_execution;
+    zend_execute_data *vm_stack; // vm_context
+    zend_executor_globals eg;
+    ph_context_t actor_context; // c_context
+    int vm_stack_thread_offset;
+    actor_state_t state;
     store_t store;
+    entry_t *retval; // make singly-linked list?
     int thread_offset;
     zend_object obj;
 };
@@ -128,10 +141,15 @@ typedef struct _send_message_task {
     entry_t *message;
 } send_message_task;
 
+typedef struct _resume_actor_task {
+    actor_t *actor;
+} resume_actor_task;
+
 typedef struct _task_t {
     union {
         process_message_task pmt;
         send_message_task smt;
+        resume_actor_task rat;
     } task;
     int task_type;
     struct _task_t *next_task;
@@ -140,8 +158,11 @@ typedef struct _task_t {
 typedef struct _thread_t {
     pthread_t thread; // must be first member
     zend_ulong id; // local storage ID used to fetch local storage data
+    zend_executor_globals eg;
     int offset;
     void*** ls; // pointer to local storage in TSRM
+    // jmp_buf blocking_actor_jmp;
+    ph_context_t thread_context;
 } thread_t;
 
 typedef struct _actor_removal_t {
@@ -157,6 +178,7 @@ typedef struct _actor_system_t {
     task_t *tasks;
     int thread_count;
     int prepared_thread_count;
+    int finished_thread_count;
     thread_t *worker_threads;
     actor_removal_t *actor_removals;
     zend_bool daemonised_actor_system;
