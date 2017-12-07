@@ -349,8 +349,7 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_o
                 ZVAL_DUP(new_op_array->literals + i, old_op_array->literals + i);
                 break;
 #if PHP_VERSION_ID < 70300
-            case IS_CONSTANT:
-                zval_copy_ctor(new_op_array->literals + i); // safe because a hard copy of the string is performed
+            case IS_CONSTANT: // constant names are interned, so nothing to do
                 break;
 #endif
             case IS_CONSTANT_AST:
