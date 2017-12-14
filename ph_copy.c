@@ -209,9 +209,9 @@ static void copy_znode_op(znode_op *new_znode, znode_op *old_znode)
 
 static zend_op *copy_zend_op(zend_op_array *new_op_array, zend_op_array *old_op_array)
 {
-    zend_op *new_opcodes = emalloc(sizeof(zend_op) * old_op_array->last_literal);
+    zend_op *new_opcodes = emalloc(sizeof(zend_op) * old_op_array->last);
 
-    memcpy(new_opcodes, old_op_array->opcodes, sizeof(zend_op) * old_op_array->last_literal);
+    memcpy(new_opcodes, old_op_array->opcodes, sizeof(zend_op) * old_op_array->last);
 
     return new_opcodes;
 }
