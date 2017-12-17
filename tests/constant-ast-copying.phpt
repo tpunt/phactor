@@ -6,19 +6,33 @@ the zval ast value.
 --FILE--
 <?php
 
-$actorSystem = new ActorSystem();
-
 const Z = 1;
+
+$actorSystem = new ActorSystem(true);
 
 class A
 {
     public static function B($a = Z, $b = Z . Z)
     {
-        var_dump($a, $b);
+		var_dump($a, $b);
     }
 }
 
-A::B();
+class Test extends Actor
+{
+    public function __construct()
+    {
+        $this->send($this, 1);
+    }
+
+    public function receive($sender, $message)
+    {
+		A::B();
+        ActorSystem::shutdown();
+    }
+}
+
+register('test', Test::class);
 
 $actorSystem->block();
 --EXPECT--
