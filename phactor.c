@@ -333,7 +333,6 @@ void new_actor(task_t *task)
     zend_function *constructor;
     zval zobj;
 
-    assert(named_actor);
     allowed_to_construct_object = 1;
 
     if (object_init_ex(&zobj, ce) != SUCCESS) {
