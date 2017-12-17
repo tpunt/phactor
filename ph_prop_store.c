@@ -23,69 +23,6 @@
 #include "php_phactor.h"
 #include "ph_copy.h"
 
-void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope)
-{
-    ph_string_t key;
-
-    PH_STRL(key) = ZSTR_LEN(name);
-    PH_STRV(key) = ZSTR_VAL(name);
-
-    entry_t *entry = ph_hashtable_search(&store->props, &key);
-
-    if (entry) {
-        ph_entry_update(entry, value);
-    } else {
-        ph_hashtable_insert(&store->props, ph_string_new(ZSTR_VAL(name), ZSTR_LEN(name)), create_new_entry(value, scope));
-    }
-}
-
-void ph_store_to_hashtable(HashTable *ht, store_t *store)
-{
-    ph_hashtable_to_hashtable(ht, &store->props);
-}
-
-void ph_store_read(store_t *store, zend_string *key, zval *rv, zval *this)
-{
-    ph_string_t phstr;
-
-    PH_STRV(phstr) = ZSTR_VAL(key);
-    PH_STRL(phstr) = ZSTR_LEN(key);
-
-    entry_t *e = ph_hashtable_search(&store->props, &phstr);
-
-    if (!e) {
-        zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is undefined\n", ZSTR_VAL(key));
-        return;
-    }
-
-    switch (ENTRY_SCOPE(e)) {
-        case ZEND_ACC_SHADOW:
-            zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
-            break;
-        case ZEND_ACC_PRIVATE | ZEND_ACC_CHANGED:
-        case ZEND_ACC_PRIVATE:
-            if (!this || Z_OBJCE_P(this) != store->ce) {
-                zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is private\n", ZSTR_VAL(key));
-            } else {
-                ph_convert_entry_to_zval(rv, e);
-            }
-            break;
-        case ZEND_ACC_PROTECTED:
-            if (!this || !instanceof_function(Z_OBJCE_P(this), store->ce)) {
-                zend_throw_error(zend_ce_type_error, "Cannot read property '%s' becaused it is protected\n", ZSTR_VAL(key));
-            } else {
-                ph_convert_entry_to_zval(rv, e);
-            }
-            break;
-        case ZEND_ACC_PUBLIC:
-            ph_convert_entry_to_zval(rv, e);
-            break;
-        default:
-            php_printf("Unknown scope used (%d)\n", ENTRY_SCOPE(e));
-            assert(0);
-    }
-}
-
 void ph_entry_delete(void *entry_void)
 {
     entry_t *entry = entry_void;
@@ -156,16 +93,6 @@ void ph_convert_entry_to_zval(zval *value, entry_t *e)
                 efree(name);
             }
             break;
-        case PH_STORE_ACTOR:
-            ZVAL_OBJ(value, &ENTRY_ACTOR(e)->obj);
-            // @todo obj->ce will need updating - how to ensure that it is correct
-            // depending upon its usage context? E.g. For property reads, it can
-            // simply be updated here, but what about for message sending?
-
-            // manually increment to prevent refcount from hitting 0 (and therefore
-            // trying to be freed by the GC)
-            ++GC_REFCOUNT(&ENTRY_ACTOR(e)->obj);
-            break;
         case IS_OBJECT:
             {
                 size_t buf_len = PH_STRL(ENTRY_STRING(e));
@@ -231,9 +158,6 @@ void ph_convert_zval_to_entry(entry_t *e, zval *value)
                     ENTRY_FUNC(e) = malloc(sizeof(zend_op_array));
                     memcpy(ENTRY_FUNC(e), zend_get_closure_method_def(value), sizeof(zend_op_array));
                     Z_ADDREF_P(value);
-                } else if (instanceof_function(Z_OBJCE_P(value), Actor_ce)) {
-                    ENTRY_ACTOR(e) = (actor_t *)((char *)Z_OBJ_P(value) - Z_OBJ_HANDLER_P(value, offset));
-                    ENTRY_TYPE(e) = PH_STORE_ACTOR;
                 } else {
                     // temporary solution - just serialise it and to the hell with the consequences
                     smart_str smart = {0};
@@ -265,11 +189,9 @@ void ph_entry_update(entry_t *entry, zval *value)
     ph_convert_zval_to_entry(entry, value);
 }
 
-entry_t *create_new_entry(zval *value, uint32_t scope)
+entry_t *create_new_entry(zval *value)
 {
     entry_t *e = malloc(sizeof(entry_t));
-
-    ENTRY_SCOPE(e) = scope;
 
     ph_convert_zval_to_entry(e, value);
 

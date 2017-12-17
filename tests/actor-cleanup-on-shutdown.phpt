@@ -6,30 +6,35 @@ actors in the main PHP thread.
 --FILE--
 <?php
 
-$actorSystem = new ActorSystem();
+$actorSystem = new ActorSystem(true);
 
-class Test extends Actor
+class TestA extends Actor
 {
     public function receive($sender, $message)
     {
-        new class extends Actor {public function receive($s, $m){}};
+        register('testa3', TestA::class);
+        ActorSystem::shutdown();
     }
 }
 
-new class(new Test) extends Actor {
-    public function __construct(Actor $actor)
+register('testa1', TestA::class);
+register('testb1', TestB::class);
+
+class TestB extends Actor
+{
+    public function __construct()
     {
-        new class extends Actor {public function receive($s, $m){}};
-        $this->send($actor, 1);
+        register('testa2', TestA::class);
+        $this->send('testb1', 1);
     }
 
     public function receive($sender, $message)
     {
-        new class extends Actor {public function receive($s, $m){}};
-        var_dump($sender);
+        register('testb2', TestA::class);
+        $this->send('testa2', 1);
     }
-};
+}
 
 $actorSystem->block();
 
---EXPECTF--
+--EXPECT--

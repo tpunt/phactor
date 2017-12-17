@@ -5,7 +5,7 @@ Test basic message passing
 --FILE--
 <?php
 
-$actorSystem = new ActorSystem();
+$actorSystem = new ActorSystem(true);
 
 class Test extends Actor
 {
@@ -17,10 +17,10 @@ class Test extends Actor
     }
 }
 
-new class (new Test, 1) extends Actor {
-    function __construct(Test $test, int $n)
+class Test2 extends Actor {
+    function __construct(int $n)
     {
-        $this->send($test, ['ping', $n]);
+        $this->send('test', ['ping', $n]);
     }
 
     function receive($sender, $message)
@@ -29,9 +29,14 @@ new class (new Test, 1) extends Actor {
 
         if ($message[1] < 10) {
             $this->send($sender, ['ping', $message[1] + 1]);
+        } else {
+            ActorSystem::shutdown();
         }
     }
 };
+
+register('test', Test::class);
+register('test2', Test2::class, 1);
 
 $actorSystem->block();
 --EXPECT--

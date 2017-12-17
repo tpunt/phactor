@@ -7,17 +7,18 @@ Ensure that constants are correctly handled.
 
 const A = [1,2,3];
 
-$actorSystem = new ActorSystem();
+$actorSystem = new ActorSystem(true);
 
 const B = [4,5,6];
 
 class Test extends Actor
 {
     const C = [7,8,9];
-    
+
     public function __construct()
     {
         var_dump(self::C);
+        register('test2', Test2::class);
     }
 
     public function receive($sender, $message)
@@ -29,13 +30,14 @@ class Test extends Actor
     }
 }
 
-$actor = new class(new Test) extends Actor {
+class Test2 extends Actor
+{
     const D = [10,11,12];
 
-    public function __construct(Actor $actor)
+    public function __construct()
     {
         var_dump(self::D);
-        $this->send($actor, self::D);
+        $this->send('test', self::D);
     }
 
     public function receive($sender, $message)
@@ -43,8 +45,11 @@ $actor = new class(new Test) extends Actor {
         var_dump(A);
         var_dump(defined('B') ? B : "Constant 'B' not found");
         var_dump(self::D, $message);
+        ActorSystem::shutdown();
     }
-};
+}
+
+register('test', Test::class);
 
 $actorSystem->block();
 --EXPECT--

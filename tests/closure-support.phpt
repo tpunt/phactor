@@ -1,12 +1,11 @@
 --TEST--
 Support for closures
 --DESCRIPTION--
-Enable closures to be passed as messages, as well as be assigned as properties
-to Actor objects
+Enable closures to be passed as messages
 --FILE--
 <?php
 
-$actorSystem = new ActorSystem();
+$actorSystem = new ActorSystem(true);
 
 class Test extends Actor
 {
@@ -17,27 +16,29 @@ class Test extends Actor
     }
 }
 
-$actor = new class (new Test) extends Actor {
-    function __construct(Test $test)
+class Test2 extends Actor
+{
+    function __construct()
     {
         $this->func = function () {
             return "abc";
         };
-        $this->send($test, $this->func);
+        $this->send('test', $this->func);
     }
 
     function receive($sender, $message)
     {
         var_dump($message());
         var_dump(($this->func)());
+        ActorSystem::shutdown();
     }
-};
+}
 
-var_dump(($actor->func)());
+register('test', Test::class);
+register('test2', Test2::class);
 
 $actorSystem->block();
 --EXPECT--
-string(3) "abc"
 string(3) "abc"
 string(3) "abc"
 string(3) "abc"

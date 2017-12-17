@@ -95,15 +95,20 @@ ZEND_TSRMLS_CACHE_EXTERN()
 #define THREAD_COUNT 10
 
 
-#define PROCESS_MESSAGE_TASK 1
-#define SEND_MESSAGE_TASK 2
-#define RESUME_ACTOR_TASK 3
-
 #define PHACTOR_CTX(ls, id, type, element) (((type) (*((void ***) ls))[TSRM_UNSHUFFLE_RSRC_ID(id)])->element)
 #define PHACTOR_EG(ls, v) PHACTOR_CTX(ls, executor_globals_id, zend_executor_globals*, v)
 #define PHACTOR_CG(ls, v) PHACTOR_CTX(ls, compiler_globals_id, zend_compiler_globals*, v)
 #define PHACTOR_SG(ls, v) PHACTOR_CTX(ls, sapi_globals_id, sapi_globals_struct*, v)
 // shortcut macros of PHACTOR_MAIN_EG et al.?
+
+#define PH_THREAD_G(v) thread->v
+
+typedef enum _task_type_t {
+    PROCESS_MESSAGE_TASK,
+    SEND_MESSAGE_TASK,
+    RESUME_ACTOR_TASK,
+    NEW_ACTOR_TASK
+} task_type_t;
 
 typedef enum _actor_state_t {
     NEW_STATE,   // not waiting - starts a fresh context
@@ -119,14 +124,13 @@ typedef struct _message_t {
 
 struct _actor_t {
     ph_string_t ref;
+    ph_string_t *name;
     message_t *mailbox;
     zend_execute_data *vm_stack; // vm_context
     zend_executor_globals eg;
     ph_context_t actor_context; // c_context
-    int vm_stack_thread_offset;
     actor_state_t state;
-    store_t store;
-    entry_t *retval; // make singly-linked list?
+    entry_t *retval; // @todo make singly-linked list?
     int thread_offset;
     zend_object obj;
 };
@@ -137,7 +141,7 @@ typedef struct _process_message_task {
 
 typedef struct _send_message_task {
     ph_string_t from_actor_ref;
-    ph_string_t to_actor_ref;
+    ph_string_t to_actor_name;
     entry_t *message;
 } send_message_task;
 
@@ -145,13 +149,35 @@ typedef struct _resume_actor_task {
     actor_t *actor;
 } resume_actor_task;
 
+typedef enum _named_actor_status_t {
+    CONSTRUCTION,
+    ACTIVE,
+    DESTRUCTION // @todo needed?
+} named_actor_status_t;
+
+typedef struct _named_actor_t {
+    // ph_string_t name; // needed?
+    named_actor_status_t status;
+	int perceived_used; // for the calling code
+    ph_hashtable_t actors;
+    // mutex lock?
+} named_actor_t;
+
+typedef struct new_actor_task_t {
+    ph_string_t *named_actor_key;
+    ph_string_t class_name;
+    entry_t *args;
+    int argc;
+} new_actor_task_t;
+
 typedef struct _task_t {
     union {
         process_message_task pmt;
         send_message_task smt;
         resume_actor_task rat;
+        new_actor_task_t nat;
     } task;
-    int task_type;
+    task_type_t task_type;
     struct _task_t *next_task;
 } task_t;
 
@@ -159,9 +185,10 @@ typedef struct _thread_t {
     pthread_t thread; // must be first member
     zend_ulong id; // local storage ID used to fetch local storage data
     zend_executor_globals eg;
+    task_t *tasks;
+    pthread_mutex_t ph_task_mutex;
     int offset;
     void*** ls; // pointer to local storage in TSRM
-    // jmp_buf blocking_actor_jmp;
     ph_context_t thread_context;
 } thread_t;
 
@@ -175,7 +202,7 @@ typedef struct _actor_system_t {
     // char system_reference[10]; // @todo needed when remote actors are introduced
     zend_bool initialised;
     ph_hashtable_t actors;
-    task_t *tasks;
+    ph_hashtable_t named_actors;
     int thread_count;
     int prepared_thread_count;
     int finished_thread_count;
@@ -187,7 +214,6 @@ typedef struct _actor_system_t {
 
 
 extern thread_t main_thread;
-extern pthread_mutex_t phactor_task_mutex;
 extern zend_object_handlers phactor_actor_handlers;
 extern zend_object_handlers phactor_actor_system_handlers;
 

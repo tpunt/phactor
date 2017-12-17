@@ -6,9 +6,12 @@ objects.
 --FILE--
 <?php
 
-$actorSystem = new ActorSystem();
+$actorSystem = new ActorSystem(true);
 
-$a = new class extends Actor {
+register('test', Test::class);
+register('test2', Test2::class);
+
+class Test extends Actor {
     public function receive($sender, $message)
     {
         var_dump($message);
@@ -17,14 +20,15 @@ $a = new class extends Actor {
         var_dump($message);
         $this->send($sender, 4);
     }
-};
+}
 
-$b = new class($a) extends Actor {
+class Test2 extends Actor
+{
     private $workers;
 
-    public function __construct(Actor $to)
+    public function __construct()
     {
-        $this->send($to, 1);
+        $this->send('test', 1);
     }
 
     public function receive($sender, $message)
@@ -33,8 +37,9 @@ $b = new class($a) extends Actor {
         $this->send($sender, 3);
         var_dump($this->receiveBlock());
         var_dump($message);
+        ActorSystem::shutdown();
     }
-};
+}
 
 $actorSystem->block();
 --EXPECT--

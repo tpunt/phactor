@@ -7,7 +7,7 @@ Arrays do need duplicating.
 --FILE--
 <?php
 
-$actorSystem = new ActorSystem();
+$actorSystem = new ActorSystem(true);
 
 class A
 {
@@ -24,7 +24,8 @@ class A
     }
 }
 
-new class extends Actor {
+class Test extends Actor
+{
     public function __construct()
     {
         $this->send($this, 1);
@@ -33,8 +34,11 @@ new class extends Actor {
     public function receive($sender, $message)
     {
         A::B();
+        ActorSystem::shutdown();
     }
-};
+}
+
+register('test', Test::class);
 
 $actorSystem->block();
 --EXPECT--

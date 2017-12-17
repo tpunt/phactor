@@ -29,7 +29,7 @@
 
 // @todo store hash value in ph_string_t instead?
 typedef struct _ph_bucket_t {
-    ph_string_t *key;
+    ph_string_t *key; // @todo remove pointer to key?
     void *value;
     int hash;
     int variance;
@@ -73,9 +73,11 @@ void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key, void (*dtor_value
 void ph_hashtable_delete_ind(ph_hashtable_t *ht, int hash, void (*dtor_value)(void *));
 void *ph_hashtable_search(ph_hashtable_t *ht, ph_string_t *key);
 void *ph_hashtable_search_ind(ph_hashtable_t *ht, int hash);
+ph_string_t *ph_hashtable_key_fetch(ph_hashtable_t *ht, ph_string_t *key);
 void ph_hashtable_update(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_update_ind(ph_hashtable_t *ht, int hash, void *value);
 void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *));
 void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht);
+void *ph_hashtable_random_value(ph_hashtable_t *ht);
 
 #endif

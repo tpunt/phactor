@@ -5,7 +5,7 @@ Ensure that visibility of properties for Actor-based objects is still enforced.
 --FILE--
 <?php
 
-$actorSystem = new ActorSystem();
+$actorSystem = new ActorSystem(true);
 
 class Test extends Actor
 {
@@ -14,12 +14,11 @@ class Test extends Actor
     private $c = 3;
     private $d = 4;
 
-    public function __construct()
+    public function receive($sender, $message)
     {
         var_dump($this->a, $this->b, $this->c);
+        ActorSystem::shutdown();
     }
-
-    public function receive($a, $b){}
 }
 
 class Test2 extends Test
@@ -28,44 +27,20 @@ class Test2 extends Test
 
     public function __construct()
     {
-        var_dump($this->a, $this->b);
-
-        try {
-            var_dump($this->c);
-        } catch (TypeError $te) {
-            echo $te->getMessage();
-        }
-
-        var_dump($this->d);
+        var_dump($this->a, $this->b, @$this->c, $this->d);
+        $this->send('test', null);
     }
 }
 
-$test = new Test();
-$test2 = new Test2();
-
-var_dump($test->a);
-
-try {
-    var_dump($test->b);
-} catch (TypeError $te) {
-    echo $te->getMessage();
-}
-
-try {
-    var_dump($test->c);
-} catch (TypeError $te) {
-    echo $te->getMessage();
-}
+register('test', Test::class);
+register('test2', Test2::class);
 
 $actorSystem->block();
 --EXPECT--
 int(1)
 int(2)
-int(3)
-int(1)
-int(2)
-Cannot read property 'c' becaused it is private
+NULL
 int(4)
 int(1)
-Cannot read property 'b' becaused it is protected
-Cannot read property 'c' becaused it is private
+int(2)
+int(3)

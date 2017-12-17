@@ -5,9 +5,12 @@ Test basic message passing
 --FILE--
 <?php
 
-$actorSystem = new ActorSystem();
+$actorSystem = new ActorSystem(true);
 
-new class extends Actor {
+register('test', Test::class);
+
+class Test extends Actor
+{
     public function __construct()
     {
         $this->send($this, 1);
@@ -19,9 +22,11 @@ new class extends Actor {
 
         if ($message < 10) {
             $this->send($this, $message + 1);
+        } else {
+            ActorSystem::shutdown();
         }
     }
-};
+}
 
 $actorSystem->block();
 --EXPECT--

@@ -42,7 +42,7 @@ void debug_tasks(task_t *task)
                 PH_STRV(task->task.pmt.for_actor->ref) + 28, PH_STRV(task->task.pmt.for_actor->mailbox->from_actor_ref) + 28, task->task.pmt.for_actor->mailbox->message);
         } else {
             printf("(to Actor: %s, Message: {from_actor_ref = %s, message = %p})",
-            PH_STRV(task->task.smt.to_actor_ref) + 28, PH_STRV(task->task.smt.from_actor_ref) + 28, task->task.smt.message);
+            PH_STRV(task->task.smt.to_actor_name) + 28, PH_STRV(task->task.smt.from_actor_ref) + 28, task->task.smt.message);
         }
 
         printf("\n");

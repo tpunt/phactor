@@ -25,11 +25,6 @@
 
 struct _actor_t;
 
-typedef struct _store_t {
-    zend_class_entry *ce;
-    ph_hashtable_t props;
-} store_t;
-
 typedef struct _entry_t {
     int type;
     union {
@@ -38,12 +33,12 @@ typedef struct _entry_t {
         double floating;
         ph_string_t string;
         zend_function *func;
-        struct _actor_t *actor;
+        // struct _actor_t *actor;
         // array
         // object
         // resource ?
     } val;
-    uint32_t scope;
+    // uint32_t scope;
 } entry_t;
 
 #define PH_STORE_FUNC 100
@@ -55,17 +50,12 @@ typedef struct _entry_t {
 #define ENTRY_DOUBLE(s) (s)->val.floating
 #define ENTRY_BOOL(s) (s)->val.boolean
 #define ENTRY_FUNC(s) (s)->val.func
-#define ENTRY_ACTOR(s) (s)->val.actor
-#define ENTRY_SCOPE(s) (s)->scope
 
-void ph_store_add(store_t *store, zend_string *name, zval *value, uint32_t scope);
-void ph_store_to_hashtable(HashTable *ht, store_t *store);
 void ph_convert_entry_to_zval(zval *value, entry_t *s);
 void ph_convert_zval_to_entry(entry_t *e, zval *value);
-void ph_store_read(store_t *store, zend_string *key, zval *rv, zval *this);
 void ph_entry_delete(void *store);
 void ph_entry_delete_value(entry_t *entry);
 void ph_entry_update(entry_t *entry, zval *value);
-entry_t *create_new_entry(zval *value, uint32_t scope);
+entry_t *create_new_entry(zval *value);
 
 #endif

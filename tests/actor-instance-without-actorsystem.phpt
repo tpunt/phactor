@@ -6,9 +6,7 @@ Instantiate a new Actor object without the ActorSystem object.
 <?php
 
 try {
-    new class extends Actor {
-        public function receive($sender, $message) {}
-    };
+    register('a', Actor::class);
 } catch (Error $e) {
     echo $e->getMessage();
 }

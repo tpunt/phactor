@@ -23,6 +23,7 @@
 #include "ph_hashtable.h"
 
 static void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
+static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
 static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value);
 void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value);
 void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void (*dtor_value)(void *));
@@ -193,7 +194,41 @@ void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
             return b->value;
         }
 
-        if (b->hash == 0) {
+        if (b->hash == 0) { // @todo when can the hash ever be 0? If never, then this should go before above condition
+            return NULL;
+        }
+
+        // @todo if the variance is less than the previous bucket, then also break early?
+
+        if (++index == ht->size) {
+            index -= ht->size;
+        }
+    }
+
+    return NULL;
+}
+
+ph_string_t *ph_hashtable_key_fetch(ph_hashtable_t *ht, ph_string_t *key)
+{
+    return ph_hashtable_key_fetch_direct(ht, key, get_hash(key));
+}
+
+static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
+{
+    int index = hash & (ht->size - 1);
+
+    for (int i = 0; i < ht->size; ++i) {
+        ph_bucket_t *b = ht->values + index;
+
+        if (b->hash == -1) {
+            continue;
+        }
+
+        if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
+            return b->key;
+        }
+
+        if (b->hash == 0) { // @todo when can the hash ever be 0? If never, then this should go before above condition
             return NULL;
         }
 
@@ -305,4 +340,18 @@ void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
 
         _zend_hash_str_add(ht, PH_STRV_P(b->key), PH_STRL_P(b->key), &value ZEND_FILE_LINE_CC);
     }
+}
+
+void *ph_hashtable_random_value(ph_hashtable_t *ht)
+{
+    assert(ht->n_used);
+
+    // @todo improve?
+    do {
+        int i = rand() % ht->size; // @todo modulo bias
+
+        if (ht->values[i].hash > 0) {
+            return ht->values[i].value;
+        }
+    } while (1);
 }
