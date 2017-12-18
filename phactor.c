@@ -56,7 +56,7 @@ void delete_named_actor(void *named_actor_void);
 void delete_actor(void *actor);
 void new_actor(task_t *task);
 message_t *create_new_message(ph_string_t *from_actor_ref, entry_t *message);
-void send_message(task_t *task);
+zend_bool send_message(task_t *task);
 void send_local_message(actor_t *to_actor, task_t *task);
 void send_remote_message(task_t *task);
 void initialise_actor_system(void);
@@ -112,6 +112,7 @@ void restore_executor_globals(zend_executor_globals *eg)
 void message_handling_loop(void)
 {
     while (1) {
+again:
         perform_actor_removals();
 
         task_t *current_task = dequeue_task();
@@ -128,7 +129,9 @@ void message_handling_loop(void)
 
         switch (current_task->task_type) {
             case SEND_MESSAGE_TASK:
-                send_message(current_task);
+                if (!send_message(current_task)) {
+                    goto again; //  prevents freeing of current task if the message was never sent
+                }
                 break;
             case PROCESS_MESSAGE_TASK:
                 currently_processing_task = current_task; // tls for the currently processing actor
@@ -248,14 +251,16 @@ void process_message(/*task_t *task*/)
     ph_set_context(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context);
 }
 
-void send_message(task_t *task)
+zend_bool send_message(task_t *task)
 {
     actor_t *to_actor = get_actor_from_name(&task->task.smt.to_actor_name);
+    zend_bool sent = 1;
 
     if (to_actor) {
         if ((ulong)to_actor == 1) {
             // @todo how to prevent infinite loop if actor creation fails?
             enqueue_task(task, PHACTOR_G(actor_system)->thread_count);
+            sent = 0;
         } else {
             send_local_message(to_actor, task);
         }
@@ -265,12 +270,20 @@ void send_message(task_t *task)
         // ActorName) should be used instead
         to_actor = get_actor_from_ref(&task->task.smt.to_actor_name);
 
-        if (to_actor) {
-            send_local_message(to_actor, task);
+        if ((ulong)to_actor == 1) {
+            // @todo how to prevent infinite loop if actor creation fails?
+            enqueue_task(task, PHACTOR_G(actor_system)->thread_count);
+            sent = 0;
         } else {
-            send_remote_message(task);
+            if (to_actor) {
+                send_local_message(to_actor, task);
+            } else {
+                send_remote_message(task);
+            }
         }
     }
+
+    return sent;
 }
 
 void resume_actor(actor_t *actor)
@@ -566,6 +579,15 @@ actor_t *get_actor_from_name(ph_string_t *actor_name)
     if (!named_actor) {
         return NULL;
     }
+
+    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
+    if (named_actor->status == CONSTRUCTION) {
+        pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
+        // This enables for the message to be enqueued again if the actor is
+        // still being created
+        return (void *) 1; // @todo find a better way?
+    }
+    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     return ph_hashtable_random_value(&named_actor->actors);
 }
