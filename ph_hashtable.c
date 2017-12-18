@@ -46,6 +46,7 @@ void ph_hashtable_init(ph_hashtable_t *ht, int size)
     ht->values = calloc(sizeof(ph_bucket_t), size);
     ht->size = size;
     ht->n_used = 0;
+    ht->flags = 0;
 }
 
 void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *))
