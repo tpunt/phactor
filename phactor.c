@@ -574,9 +574,9 @@ void set_actor_ref(ph_string_t *ref)
 
 actor_t *get_actor_from_name(ph_string_t *actor_name)
 {
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor_name);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     if (!named_actor) {
         return NULL;
@@ -605,9 +605,9 @@ actor_t *get_actor_from_ref(ph_string_t *actor_ref)
     }
 
     // we have to go through the named actors in case the actor has not yet been created
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     assert(named_actor);
 
