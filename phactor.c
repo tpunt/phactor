@@ -259,6 +259,7 @@ zend_bool send_message(task_t *task)
     if (to_actor) {
         if ((ulong)to_actor == 1) {
             // @todo how to prevent infinite loop if actor creation fails?
+            task->next_task = NULL;
             enqueue_task(task, PHACTOR_G(actor_system)->thread_count);
             sent = 0;
         } else {
@@ -272,6 +273,7 @@ zend_bool send_message(task_t *task)
 
         if ((ulong)to_actor == 1) {
             // @todo how to prevent infinite loop if actor creation fails?
+            task->next_task = NULL;
             enqueue_task(task, PHACTOR_G(actor_system)->thread_count);
             sent = 0;
         } else {
