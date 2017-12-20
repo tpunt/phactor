@@ -408,7 +408,7 @@ static void copy_ces(HashTable *new_ces, HashTable *old_ces)
             zend_class_entry *new_ce = copy_ce(old_ce);
             zend_string *new_ce_name = zend_string_tolower(old_ce->name);
 
-            zend_hash_update_ptr(new_ces, new_ce_name, new_ce);
+            zend_hash_add_ptr(new_ces, new_ce_name, new_ce);
 
             zend_string_release(new_ce_name); // @todo if the class name is all lower case, then this will probably segfault
         }
