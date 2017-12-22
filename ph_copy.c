@@ -23,7 +23,7 @@
 static void copy_executor_globals(void);
 static zend_function *copy_function(zend_function *old_func, zend_class_entry *new_ce);
 static zend_function *copy_internal_function(zend_function *old_func);
-static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32_t num_args);
+static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32_t fn_flags, uint32_t num_args);
 static void copy_znode_op(znode_op *new_znode, znode_op *old_znode);
 static zend_op *copy_zend_op(zend_op_array *new_op_array, zend_op_array *old_op_array);
 static zend_live_range *copy_zend_live_range(zend_live_range *old_live_range, uint32_t count);
@@ -167,14 +167,25 @@ static zend_function *copy_function(zend_function *old_func, zend_class_entry *n
     return new_func;
 }
 
-static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32_t num_args)
+static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32_t fn_flags, uint32_t num_args)
 {
+    if (fn_flags & ZEND_ACC_HAS_RETURN_TYPE) {
+        --old_arg_info;
+        ++num_args;
+    }
+
+    if (fn_flags & ZEND_ACC_VARIADIC) {
+        ++num_args;
+    }
+
     zend_arg_info *new_arg_info = emalloc(sizeof(zend_arg_info) * num_args);
 
     memcpy(new_arg_info, old_arg_info, sizeof(zend_arg_info) * num_args);
 
     for (int i = 0; i < num_args; ++i) {
-        new_arg_info[i].name = zend_string_dup(old_arg_info[i].name, 0);
+        if (old_arg_info[i].name) {
+            new_arg_info[i].name = zend_string_dup(old_arg_info[i].name, 0);
+        }
 
         if (ZEND_TYPE_IS_CLASS(old_arg_info[i].type)) {
             zend_string *type_name = zend_string_dup(ZEND_TYPE_NAME(old_arg_info[i].type), 0);
@@ -183,22 +194,7 @@ static zend_arg_info *copy_function_arg_info(zend_arg_info *old_arg_info, uint32
             new_arg_info[i].type = ZEND_TYPE_ENCODE_CLASS(type_name, allow_null);
         }
     }
-/*
-    for (int i = 0; i < num_args; ++i) {
-        new_arg_info[i].name = zend_string_dup(old_arg_info[i].name, 0);
 
-        if (old_arg_info[i].class_name) {
-            new_arg_info[i].class_name = zend_string_dup(old_arg_info[i].class_name, 0);
-        } else {
-            new_arg_info[i].class_name = NULL;
-        }
-
-        new_arg_info[i].type_hint = old_arg_info[i].type_hint;
-        new_arg_info[i].pass_by_reference = old_arg_info[i].pass_by_reference;
-        new_arg_info[i].allow_null = old_arg_info[i].allow_null;
-        new_arg_info[i].is_variadic = old_arg_info[i].is_variadic;
-    }
-*/
     return new_arg_info;
 }
 
@@ -253,7 +249,7 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_o
     new_op_array->prototype = NULL;
     new_op_array->num_args = old_op_array->num_args;
     new_op_array->required_num_args = old_op_array->required_num_args;
-    new_op_array->arg_info = copy_function_arg_info(old_op_array->arg_info, old_op_array->num_args);
+    new_op_array->arg_info = copy_function_arg_info(old_op_array->arg_info, old_op_array->fn_flags, old_op_array->num_args);
     new_op_array->refcount = emalloc(sizeof(uint32_t));
     *new_op_array->refcount = 1;
     new_op_array->last = old_op_array->last;
