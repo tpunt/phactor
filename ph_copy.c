@@ -28,6 +28,7 @@ static void copy_znode_op(znode_op *new_znode, znode_op *old_znode);
 static zend_op *copy_zend_op(zend_op_array *new_op_array, zend_op_array *old_op_array);
 static zend_live_range *copy_zend_live_range(zend_live_range *old_live_range, uint32_t count);
 static zend_try_catch_element *copy_zend_try_catch_element(zend_try_catch_element *old_try_catch, uint32_t count);
+static HashTable *copy_static_variables(HashTable *old_static_variables);
 static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array, zend_class_entry *new_ce);
 static void copy_ini_directives(HashTable *new_ini_directives, HashTable *old_ini_directives);
 static void copy_included_files(HashTable *new_included_files, HashTable old_included_files);
@@ -239,6 +240,58 @@ static zend_try_catch_element *copy_zend_try_catch_element(zend_try_catch_elemen
     return new_try_catch;
 }
 
+static HashTable *copy_static_variables(HashTable *old_static_variables)
+{
+    if (!old_static_variables) {
+        return NULL;
+    }
+
+    HashTable *new_static_variables;
+    zend_string *key;
+    zval *value;
+
+    ALLOC_HASHTABLE(new_static_variables);
+    zend_hash_init(new_static_variables, zend_hash_num_elements(old_static_variables), NULL, ZVAL_PTR_DTOR, 0);
+
+    ZEND_HASH_FOREACH_STR_KEY_VAL(old_static_variables, key, value) {
+        zend_string *new_key = zend_string_dup(key, 0);
+
+        while (Z_ISREF_P(value)) {
+            value = Z_REFVAL_P(value);
+        }
+
+        if (!Z_REFCOUNTED_P(value)) {
+            zend_hash_add(new_static_variables, new_key, value);
+        } else {
+            zval copy;
+
+            switch (Z_TYPE_P(value)) {
+                case IS_STRING:
+                    ZVAL_NEW_STR(&copy, zend_string_dup(Z_STR_P(value), 0));
+                    break;
+                case IS_ARRAY:
+                    ZVAL_ARR(&copy, ph_zend_array_dup(Z_ARR_P(value)));
+                    break;
+                case IS_CONSTANT:
+                    // constant names are not interned (in PHP 7.2, at least)
+                    ZVAL_NEW_STR(&copy, zend_string_dup(Z_STR_P(value), 0));
+                    break;
+                case IS_CONSTANT_AST: // @todo PHP 7.2 specific
+                    ZVAL_NEW_AST(&copy, ph_zend_ast_copy(Z_ASTVAL_P(value)));
+                    break;
+                default:
+                    printf("%d\n", Z_TYPE_P(value));
+                    ZEND_ASSERT(0);
+            }
+
+            zend_hash_add(new_static_variables, new_key, &copy);
+            zend_string_release(new_key);
+        }
+    } ZEND_HASH_FOREACH_END();
+
+    return new_static_variables;
+}
+
 static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_op_array, zend_class_entry *new_ce)
 {
     new_op_array->type = old_op_array->type;
@@ -262,14 +315,7 @@ static void copy_zend_op_array(zend_op_array *new_op_array, zend_op_array *old_o
     new_op_array->last_try_catch = old_op_array->last_try_catch;
     new_op_array->live_range = copy_zend_live_range(old_op_array->live_range, old_op_array->last_live_range);
     new_op_array->try_catch_array = copy_zend_try_catch_element(old_op_array->try_catch_array, old_op_array->last_try_catch);
-
-    if (old_op_array->static_variables) {
-        ALLOC_HASHTABLE(new_op_array->static_variables);
-        zend_hash_init(new_op_array->static_variables, 4, NULL, ZVAL_PTR_DTOR, 0);
-        zend_hash_copy(new_op_array->static_variables, old_op_array->static_variables, NULL);
-    } else {
-        new_op_array->static_variables = NULL;
-    }
+    new_op_array->static_variables = copy_static_variables(old_op_array->static_variables);
 
     if (!(new_op_array->filename = zend_hash_find_ptr(&PHACTOR_ZG(interned_strings), old_op_array->filename))) {
         zend_string *filename = zend_string_dup(old_op_array->filename, 0);
