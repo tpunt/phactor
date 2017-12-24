@@ -212,9 +212,7 @@ void *worker_function(thread_t *ph_thread)
 
     while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->finished_thread_count);
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, delete_actor, actor_t *, thread_offset, thread_offset);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
     php_request_shutdown(NULL);
 
@@ -334,10 +332,7 @@ void new_actor(task_t *task)
 {
     ph_string_t class_name = task->task.nat.class_name;
     ph_string_t *named_actor_key = task->task.nat.named_actor_key;
-
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, named_actor_key);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     assert(named_actor);
 
@@ -366,13 +361,10 @@ void new_actor(task_t *task)
 
     pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     new_actor->name = named_actor_key; // @todo how to best mutex lock this?
-
-    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
     pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
+    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
     ph_hashtable_insert(&named_actor->actors, &new_actor->ref, new_actor);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
 
@@ -574,9 +566,7 @@ void set_actor_ref(ph_string_t *ref)
 
 actor_t *get_actor_from_name(ph_string_t *actor_name)
 {
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor_name);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     if (!named_actor) {
         return NULL;
@@ -596,18 +586,14 @@ actor_t *get_actor_from_name(ph_string_t *actor_name)
 
 actor_t *get_actor_from_ref(ph_string_t *actor_ref)
 {
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors, actor_ref);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
     if (!actor) {
         return NULL;
     }
 
     // we have to go through the named actors in case the actor has not yet been created
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     assert(named_actor);
 
@@ -686,9 +672,7 @@ void remove_actor(actor_t *target_actor)
         return;
     }
 
-    pthread_mutex_lock(&phactor_actors_mutex);
     ph_hashtable_delete(&PHACTOR_G(actor_system)->actors, &target_actor->ref, delete_actor);
-    pthread_mutex_unlock(&phactor_actors_mutex);
 }
 
 void perform_actor_removals(void)
@@ -768,13 +752,11 @@ void delete_actor(void *actor_void)
 
     php_actor_dtor_object(&actor->obj);
 
-    // no need to mutex lock here - when deleting an actor, we should already
-    // be holding the phactor_actors_mutex mutex
     named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     ph_hashtable_delete(&named_actor->actors, &actor->ref, delete_actor_from_named_actors);
 
+    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     --named_actor->perceived_used;
 
     if (named_actor->perceived_used == 0) {
@@ -795,9 +777,7 @@ void php_actor_system_dtor_object(zend_object *obj)
 
 void php_actor_system_free_object(zend_object *obj)
 {
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, delete_actor, actor_t *, thread_offset, thread_offset);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
     for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
         free(PHACTOR_G(actor_system)->actor_removals[i].actors);
@@ -1097,9 +1077,7 @@ zend_long register_new_actor(zend_string *name, zend_string *class, zval *args, 
 
     ph_string_update(&key, ZSTR_VAL(name), ZSTR_LEN(name));
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, &key);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     if (!named_actor) {
         key2 = malloc(sizeof(ph_string_t));
@@ -1109,13 +1087,9 @@ zend_long register_new_actor(zend_string *name, zend_string *class, zval *args, 
 
         named_actor = new_named_actor();
 
-        pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
         ph_hashtable_insert(&PHACTOR_G(actor_system)->named_actors, key2, named_actor);
-        pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
     } else {
-        pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
         key2 = ph_hashtable_key_fetch(&PHACTOR_G(actor_system)->named_actors, &key);
-        pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
     }
 
     task_t *task = create_new_actor_task(key2, class, args, argc);

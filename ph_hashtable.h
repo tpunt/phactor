@@ -41,10 +41,12 @@ typedef struct _ph_hashtable_t {
     int size;
     int n_used;
     int flags;
+    pthread_mutex_t lock;
 } ph_hashtable_t;
 
 #define ph_hashtable_delete_by_value(ht, dtor, type, field, target) \
     do { \
+        pthread_mutex_lock(&(ht)->lock); \
         for (int i = 0; i < (ht)->size; ++i) { \
             ph_bucket_t *b = (ht)->values + i; \
 \
@@ -63,6 +65,7 @@ typedef struct _ph_hashtable_t {
                 } \
             } \
         } \
+        pthread_mutex_unlock(&(ht)->lock); \
     } while (0)
 
 ph_hashtable_t *ph_hashtable_alloc(int size);
