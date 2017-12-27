@@ -39,7 +39,7 @@ typedef struct _ph_bucket_t {
 typedef struct _ph_hashtable_t {
     ph_bucket_t *values;
     int size;
-    int n_used;
+    int used;
     int flags;
     pthread_mutex_t lock;
 } ph_hashtable_t;
@@ -68,7 +68,6 @@ typedef struct _ph_hashtable_t {
         pthread_mutex_unlock(&(ht)->lock); \
     } while (0)
 
-ph_hashtable_t *ph_hashtable_alloc(int size);
 void ph_hashtable_init(ph_hashtable_t *ht, int size);
 void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_insert_ind(ph_hashtable_t *ht, int hash, void *value);

@@ -28,24 +28,14 @@ static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int
 void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value);
 void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void (*dtor_value)(void *));
 static void ph_hashtable_resize(ph_hashtable_t *ht);
-static void ph_hashtable_rehash(ph_hashtable_t *ht, ph_bucket_t *old_values, int old_size);
+static void ph_hashtable_repopulate(ph_hashtable_t *ht, ph_bucket_t *old_values, int old_size);
 static int get_hash(ph_string_t *key);
-
-// @todo unused
-ph_hashtable_t *ph_hashtable_alloc(int size)
-{
-    ph_hashtable_t *ht = calloc(sizeof(ph_hashtable_t), 1);
-
-    ph_hashtable_init(ht, size);
-
-    return ht;
-}
 
 void ph_hashtable_init(ph_hashtable_t *ht, int size)
 {
     ht->values = calloc(sizeof(ph_bucket_t), size);
     ht->size = size;
-    ht->n_used = 0;
+    ht->used = 0;
     ht->flags = 0;
     pthread_mutex_init(&ht->lock, NULL);
 }
@@ -55,13 +45,13 @@ void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *))
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + i;
 
-        if (b->hash < 1) {
+        if (!b->value) {
             continue;
         }
 
         dtor_value(b->value);
 
-        if (ht->flags & FREE_KEYS) {
+        if (b->key && ht->flags & FREE_KEYS) {
             free(PH_STRV_P(b->key));
             free(b->key);
         }
@@ -75,7 +65,7 @@ void ph_hashtable_insert_ind(ph_hashtable_t *ht, int hash, void *value)
 {
     pthread_mutex_lock(&ht->lock);
     // resize at 75% capacity
-    if (ht->n_used == ht->size - (ht->size >> 2)) {
+    if (ht->used == ht->size - (ht->size >> 2)) {
         ph_hashtable_resize(ht);
     }
 
@@ -87,7 +77,7 @@ void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value)
 {
     pthread_mutex_lock(&ht->lock);
     // resize at 75% capacity
-    if (ht->n_used == ht->size - (ht->size >> 2)) {
+    if (ht->used == ht->size - (ht->size >> 2)) {
         ph_hashtable_resize(ht);
     }
 
@@ -103,7 +93,7 @@ static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + index;
 
-        if (b->hash < 1) {
+        if (!b->value) {
             b->hash = hash;
             b->key = key;
             b->value = value;
@@ -132,11 +122,11 @@ static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int
         ++variance;
 
         if (++index == ht->size) {
-            index -= ht->size;
+            index = 0;
         }
     }
 
-    ++ht->n_used;
+    ++ht->used;
 }
 
 static void ph_hashtable_resize(ph_hashtable_t *ht)
@@ -145,22 +135,20 @@ static void ph_hashtable_resize(ph_hashtable_t *ht)
     int old_size = ht->size;
 
     ht->size <<= 1;
-    ht->n_used = 0;
+    ht->used = 0;
     ht->values = calloc(sizeof(ph_bucket_t), ht->size);
 
-    ph_hashtable_rehash(ht, old_values, old_size);
+    ph_hashtable_repopulate(ht, old_values, old_size);
 
     free(old_values);
 }
 
-static void ph_hashtable_rehash(ph_hashtable_t *ht, ph_bucket_t *old_values, int old_size)
+static void ph_hashtable_repopulate(ph_hashtable_t *ht, ph_bucket_t *old_values, int old_size)
 {
     for (int i = 0; i < old_size; ++i) {
-        if (old_values[i].hash < 1) {
-            continue;
+        if (old_values[i].value) {
+            ph_hashtable_insert_direct(ht, old_values[i].key, old_values[i].hash, old_values[i].value);
         }
-
-        ph_hashtable_insert_direct(ht, old_values[i].key, old_values[i].hash, old_values[i].value);
     }
 }
 
@@ -201,22 +189,21 @@ void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + index;
 
-        if (b->hash == -1) {
-            continue;
+        if (!b->value) {
+            if (!b->hash) { // b->hash = 0 for an empty space, 1 for a tombstone
+                return NULL;
+            }
+            continue; // @todo if backtracking was implemented then this could be returned from instead
         }
 
         if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
             return b->value;
         }
 
-        if (b->hash == 0) { // @todo when can the hash ever be 0? If never, then this should go before above condition
-            return NULL;
-        }
-
         // @todo if the variance is less than the previous bucket, then also break early?
 
         if (++index == ht->size) {
-            index -= ht->size;
+            index = 0;
         }
     }
 
@@ -239,22 +226,21 @@ static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + index;
 
-        if (b->hash == -1) {
-            continue;
+        if (!b->value) {
+            if (!b->hash) { // b->hash = 0 for an empty space, 1 for a tombstone
+                return NULL;
+            }
+            continue; // @todo if backtracking was implemented then this could be returned from instead
         }
 
         if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
             return b->key;
         }
 
-        if (b->hash == 0) { // @todo when can the hash ever be 0? If never, then this should go before above condition
-            return NULL;
-        }
-
         // @todo if the variance is less than the previous bucket, then also break early?
 
         if (++index == ht->size) {
-            index -= ht->size;
+            index = 0;
         }
     }
 
@@ -288,14 +274,8 @@ void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
             break;
         }
 
-        if (b->hash == 0) {
-            break;
-        }
-
-        // @todo if the variance is less than the previous bucket, then also break early?
-
         if (++index == ht->size) {
-            index -= ht->size;
+            index = 0;
         }
     }
 }
@@ -321,10 +301,15 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + index;
 
+        if (!b->value) {
+            if (!b->hash) { // b->hash = 0 for an empty space, 1 for a tombstone
+                return;
+            }
+            continue; // @todo if backtracking was implemented then this could be returned from instead
+        }
+
         if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
             dtor_value(b->value);
-
-            b->hash = -1; // -1 = tombstone
 
             if (ht->flags & FREE_KEYS) {
                 free(PH_STRV_P(b->key));
@@ -332,23 +317,20 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
             }
 
             b->key = NULL;
+            b->hash = 1; // tombstone
             b->value = NULL;
             b->variance = 0;
-            --ht->n_used;
+            --ht->used;
 
             // @todo implement backtracking?
 
             break;
         }
 
-        if (b->hash == 0) {
-            break;
-        }
-
         // @todo if the variance is less than the previous bucket, then also break early?
 
         if (++index == ht->size) {
-            index -= ht->size;
+            index = 0;
         }
     }
 }
@@ -359,26 +341,30 @@ void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
         ph_bucket_t *b = phht->values + i;
         zval value;
 
-        if (b->hash < 1) {
+        if (!b->value) {
             continue;
         }
 
         ph_convert_entry_to_zval(&value, b->value);
 
-        _zend_hash_str_add(ht, PH_STRV_P(b->key), PH_STRL_P(b->key), &value ZEND_FILE_LINE_CC);
+        if (b->key) {
+            _zend_hash_str_add(ht, PH_STRV_P(b->key), PH_STRL_P(b->key), &value ZEND_FILE_LINE_CC);
+        } else {
+            _zend_hash_index_add(ht, b->hash, &value ZEND_FILE_LINE_CC);
+        }
     }
 }
 
 void *ph_hashtable_random_value(ph_hashtable_t *ht)
 {
     pthread_mutex_lock(&ht->lock);
-    assert(ht->n_used);
+    assert(ht->used);
 
     // @todo improve?
     do {
         int i = rand() % ht->size; // @todo modulo bias
 
-        if (ht->values[i].hash > 0) {
+        if (ht->values[i].value) {
             pthread_mutex_unlock(&ht->lock);
             return ht->values[i].value;
         }
