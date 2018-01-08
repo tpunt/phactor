@@ -52,10 +52,9 @@ typedef struct _entry_t {
 #define ENTRY_FUNC(s) (s)->val.func
 
 void ph_convert_entry_to_zval(zval *value, entry_t *s);
-void ph_convert_zval_to_entry(entry_t *e, zval *value);
+int ph_convert_zval_to_entry(entry_t *e, zval *value);
 void ph_entry_delete(void *store);
 void ph_entry_delete_value(entry_t *entry);
-void ph_entry_update(entry_t *entry, zval *value);
 entry_t *create_new_entry(zval *value);
 
 #endif

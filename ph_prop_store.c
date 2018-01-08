@@ -116,7 +116,7 @@ void ph_convert_entry_to_zval(zval *value, entry_t *e)
     }
 }
 
-void ph_convert_zval_to_entry(entry_t *e, zval *value)
+int ph_convert_zval_to_entry(entry_t *e, zval *value)
 {
     ENTRY_TYPE(e) = Z_TYPE_P(value);
 
@@ -154,15 +154,16 @@ void ph_convert_zval_to_entry(entry_t *e, zval *value)
 
                 if (EG(exception)) {
                     smart_str_free(&smart);
-                } else {
-                    zend_string *sval = smart_str_extract(&smart);
-
-                    PH_STRL(ENTRY_STRING(e)) = ZSTR_LEN(sval);
-                    PH_STRV(ENTRY_STRING(e)) = malloc(ZSTR_LEN(sval));
-                    memcpy(PH_STRV(ENTRY_STRING(e)), ZSTR_VAL(sval), ZSTR_LEN(sval));
-
-                    zend_string_free(sval);
+                    return 0;
                 }
+
+                zend_string *sval = smart_str_extract(&smart);
+
+                PH_STRL(ENTRY_STRING(e)) = ZSTR_LEN(sval);
+                PH_STRV(ENTRY_STRING(e)) = malloc(ZSTR_LEN(sval));
+                memcpy(PH_STRV(ENTRY_STRING(e)), ZSTR_VAL(sval), ZSTR_LEN(sval));
+
+                zend_string_free(sval);
             }
             break;
         case IS_OBJECT:
@@ -183,31 +184,35 @@ void ph_convert_zval_to_entry(entry_t *e, zval *value)
 
                     if (EG(exception)) {
                         smart_str_free(&smart);
-                    } else {
-                        zend_string *sval = smart_str_extract(&smart);
-
-                        PH_STRL(ENTRY_STRING(e)) = ZSTR_LEN(sval);
-                        PH_STRV(ENTRY_STRING(e)) = malloc(ZSTR_LEN(sval));
-                        memcpy(PH_STRV(ENTRY_STRING(e)), ZSTR_VAL(sval), ZSTR_LEN(sval));
-
-                        zend_string_free(sval);
+                        return 0;
                     }
+
+                    zend_string *sval = smart_str_extract(&smart);
+
+                    PH_STRL(ENTRY_STRING(e)) = ZSTR_LEN(sval);
+                    PH_STRV(ENTRY_STRING(e)) = malloc(ZSTR_LEN(sval));
+                    memcpy(PH_STRV(ENTRY_STRING(e)), ZSTR_VAL(sval), ZSTR_LEN(sval));
+
+                    zend_string_free(sval);
                 }
             }
+            break;
+        default:
+            return 0;
     }
-}
 
-void ph_entry_update(entry_t *entry, zval *value)
-{
-    ph_entry_delete_value(entry);
-    ph_convert_zval_to_entry(entry, value);
+    return 1;
 }
 
 entry_t *create_new_entry(zval *value)
 {
     entry_t *e = malloc(sizeof(entry_t));
 
-    ph_convert_zval_to_entry(e, value);
+    if (ph_convert_zval_to_entry(e, value)) {
+        return e;
+    }
 
-    return e;
+    free(e);
+
+    return NULL;
 }

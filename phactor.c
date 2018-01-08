@@ -419,7 +419,13 @@ task_t *create_send_message_task(ph_string_t *from_actor_ref, ph_string_t *to_ac
     new_task->task.smt.to_actor_name = *to_actor_name;
     new_task->task.smt.message = create_new_entry(message);
 
-    return new_task;
+    if (new_task->task.smt.message) {
+        return new_task;
+    }
+
+    free(new_task);
+
+    return NULL;
 }
 
 message_t *create_new_message(ph_string_t *from_actor_ref, entry_t *message)
@@ -458,7 +464,17 @@ task_t *create_new_actor_task(ph_string_t *named_actor_key, zend_string *class_n
         new_task->task.nat.args = malloc(sizeof(entry_t) * argc);
 
         for (int i = 0; i < argc; ++i) {
-            ph_convert_zval_to_entry(new_task->task.nat.args + i, args + i);
+            if (!ph_convert_zval_to_entry(new_task->task.nat.args + i, args + i)) {
+                zend_throw_error(NULL, "Failed to serialise argument %d of register()", i + 2);
+
+                for (int i2 = 0; i2 < i; ++i2) {
+                    ph_entry_delete_value(new_task->task.nat.args + i2);
+                }
+
+                free(new_task->task.nat.args);
+                free(new_task);
+                return NULL;
+            }
         }
     }
 
@@ -948,10 +964,17 @@ PHP_METHOD(Actor, send)
         return;
     }
 
+    task_t *task = create_send_message_task(&from_actor->ref, &to_actor_name, message);
+
+    if (!task) {
+        zend_throw_error(NULL, "Failed to serialise the message");
+        return;
+    }
+
     // @todo For now, we just make the main thread send all of the messages
     // In future, we could create a couple of specialised threads for
     // sending messages only (simplifying task handling for threads)
-    enqueue_task(create_send_message_task(&from_actor->ref, &to_actor_name, message), PHACTOR_G(actor_system)->thread_count);
+    enqueue_task(task, PHACTOR_G(actor_system)->thread_count);
 }
 /* }}} */
 
@@ -1093,6 +1116,11 @@ zend_long register_new_actor(zend_string *name, zend_string *class, zval *args, 
     }
 
     task_t *task = create_new_actor_task(key2, class, args, argc);
+
+    if (!task) {
+        return 0;
+    }
+
     int thread_offset = rand() % PHACTOR_G(actor_system)->thread_count; // @todo modulo bias; don't bother with main thread?
 
     enqueue_task(task, thread_offset);
