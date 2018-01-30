@@ -32,6 +32,11 @@ class Test2 extends Actor
     public function receive($sender, $message)
     {
         var_dump($this->a, $this->b, self::$c, static::$d, self::E, static::F);
+        try {
+            var_dump(Test2::B);
+        } catch (Error $e) {
+            var_dump($e->getMessage());
+        }
         ActorSystem::shutdown();
     }
 }
@@ -46,3 +51,4 @@ bool(true)
 bool(false)
 bool(true)
 bool(false)
+string(28) "Undefined class constant 'B'"
