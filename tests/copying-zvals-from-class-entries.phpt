@@ -24,6 +24,21 @@ class Test2 extends Actor
     public static $c = true, $d = false;
     const E = true, F = false;
 
+    public const X = [
+        __DIR__ . 'A',
+        ['B' => 'c']
+    ];
+
+    public static $y = [
+        __DIR__ . 'A',
+        ['B' => 'c']
+    ];
+
+    public $z = [
+        __DIR__ . 'A',
+        ['B' => 'c']
+    ];
+
     public function __construct()
     {
         $this->send('test', 1);
@@ -37,6 +52,7 @@ class Test2 extends Actor
         } catch (Error $e) {
             var_dump($e->getMessage());
         }
+        var_dump(self::X, self::$y, $this->z);
         ActorSystem::shutdown();
     }
 }
@@ -52,3 +68,30 @@ bool(false)
 bool(true)
 bool(false)
 string(28) "Undefined class constant 'B'"
+array(2) {
+  [0]=>
+  string(36) "/Users/tpunt/prog/php/phactor/testsA"
+  [1]=>
+  array(1) {
+    ["B"]=>
+    string(1) "c"
+  }
+}
+array(2) {
+  [0]=>
+  string(36) "/Users/tpunt/prog/php/phactor/testsA"
+  [1]=>
+  array(1) {
+    ["B"]=>
+    string(1) "c"
+  }
+}
+array(2) {
+  [0]=>
+  string(36) "/Users/tpunt/prog/php/phactor/testsA"
+  [1]=>
+  array(1) {
+    ["B"]=>
+    string(1) "c"
+  }
+}
