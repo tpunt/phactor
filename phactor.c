@@ -1224,7 +1224,7 @@ PHP_RINIT_FUNCTION(phactor)
         }
     }
 
-    zend_hash_init(&PHACTOR_ZG(interned_strings), 8, NULL, ZVAL_PTR_DTOR, 0);
+    zend_hash_init(&PHACTOR_ZG(op_array_file_names), 8, NULL, ZVAL_PTR_DTOR, 0);
 
     return SUCCESS;
 }
@@ -1233,7 +1233,7 @@ PHP_RINIT_FUNCTION(phactor)
 /* {{{ PHP_RSHUTDOWN_FUNCTION */
 PHP_RSHUTDOWN_FUNCTION(phactor)
 {
-    zend_hash_destroy(&PHACTOR_ZG(interned_strings));
+    zend_hash_destroy(&PHACTOR_ZG(op_array_file_names));
 
     return SUCCESS;
 }

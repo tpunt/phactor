@@ -220,7 +220,7 @@ extern zend_object_handlers phactor_actor_system_handlers;
 ZEND_EXTERN_MODULE_GLOBALS(phactor)
 
 ZEND_BEGIN_MODULE_GLOBALS(phactor)
-    HashTable interned_strings; // used for op_array file names
+    HashTable op_array_file_names;
 ZEND_END_MODULE_GLOBALS(phactor)
 
 #endif
