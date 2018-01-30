@@ -269,7 +269,7 @@ ZEND_API zend_ast *ph_zend_ast_copy(zend_ast *ast)
 		zend_ast_zval *new = emalloc(sizeof(zend_ast_zval));
 		new->kind = ZEND_AST_ZVAL;
 		new->attr = ast->attr;
-		ZVAL_DUP(&new->val, zend_ast_get_zval(ast)); // Changed line (from ZVAL_COPY)
+		PH_ZVAL_DUP(&new->val, zend_ast_get_zval(ast)); // Changed line (from ZVAL_COPY)
 		return (zend_ast *) new;
 	} else if (zend_ast_is_list(ast)) {
 		zend_ast_list *list = zend_ast_get_list(ast);
