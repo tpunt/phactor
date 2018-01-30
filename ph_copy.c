@@ -275,8 +275,10 @@ static HashTable *copy_static_variables(HashTable *old_static_variables)
                 case IS_CONSTANT_AST: // @todo PHP 7.2 specific
                     ZVAL_NEW_AST(&copy, ph_zend_ast_copy(Z_ASTVAL_P(value)));
                     break;
+                case IS_OBJECT:
+                    ZVAL_NULL(&copy);
+                    break;
                 default:
-                    printf("%d\n", Z_TYPE_P(value));
                     ZEND_ASSERT(0);
             }
 
@@ -775,7 +777,6 @@ static zval *copy_zval_table(zval *old_table, int count)
                     ZVAL_ARR(new_table + i, ph_zend_array_dup(Z_ARR(old_table[i])));
                     break;
                 case IS_OBJECT: // @todo a temporary solution
-                    php_error_docref(NULL, E_WARNING, "Objects cannot be serialised");
                     ZVAL_NULL(new_table + i);
                     break;
                 default:
