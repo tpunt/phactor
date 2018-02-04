@@ -26,6 +26,7 @@
 #include "src/classes/common.h"
 
 extern ph_actor_system_t *actor_system;
+extern zend_class_entry *Actor_ce;
 
 ph_named_actor_t *new_named_actor(void)
 {
@@ -98,17 +99,18 @@ ZEND_END_ARG_INFO()
 
 PHP_FUNCTION(register)
 {
-    zend_string *name, *class;
+    zend_string *name;
+    zend_class_entry *class = Actor_ce;
     zval *args;
     int argc = 0;
 
     ZEND_PARSE_PARAMETERS_START(2, -1)
         Z_PARAM_STR(name)
-        Z_PARAM_STR(class)
+        Z_PARAM_CLASS(class)
         Z_PARAM_VARIADIC('*', args, argc)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETVAL_LONG(register_new_actor(name, class, args, argc));
+    RETVAL_LONG(register_new_actor(name, class->name, args, argc));
 }
 
 const zend_function_entry phactor_functions[] = {
