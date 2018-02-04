@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-present The PHP Group                             |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -12,15 +12,15 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author: Thomas Punt <tpunt@php.net>                                  |
   +----------------------------------------------------------------------+
 */
 
 #include <stdlib.h>
 #include <string.h>
 
-#include "ph_prop_store.h"
-#include "ph_hashtable.h"
+#include "src/ph_entry.h"
+#include "src/ds/ph_hashtable.h"
 
 static void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
 static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
@@ -52,8 +52,7 @@ void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *))
         dtor_value(b->value);
 
         if (b->key && ht->flags & FREE_KEYS) {
-            free(PH_STRV_P(b->key));
-            free(b->key);
+            ph_str_free(b->key);
         }
     }
 
@@ -312,8 +311,7 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
             dtor_value(b->value);
 
             if (ht->flags & FREE_KEYS) {
-                free(PH_STRV_P(b->key));
-                free(b->key);
+                ph_str_free(b->key);
             }
 
             b->key = NULL;
@@ -345,7 +343,7 @@ void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
             continue;
         }
 
-        ph_convert_entry_to_zval(&value, b->value);
+        ph_entry_convert_to_zval(&value, b->value);
 
         if (b->key) {
             _zend_hash_str_add(ht, PH_STRV_P(b->key), PH_STRL_P(b->key), &value ZEND_FILE_LINE_CC);

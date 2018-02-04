@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-present The PHP Group                             |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -12,20 +12,19 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author: Thomas Punt <tpunt@php.net>                                  |
   +----------------------------------------------------------------------+
 */
 
-#ifndef PH_PROP_STORE_H
-#define PH_PROP_STORE_H
+#ifndef PH_ENTRY_H
+#define PH_ENTRY_H
 
 #include "Zend/zend.h"
-#include "ph_general.h"
-#include "ph_hashtable.h"
 
-struct _actor_t;
+#include "src/ph_string.h"
+#include "src/ds/ph_hashtable.h"
 
-typedef struct _entry_t {
+typedef struct _ph_entry_t {
     int type;
     union {
         int boolean;
@@ -33,28 +32,22 @@ typedef struct _entry_t {
         double floating;
         ph_string_t string;
         zend_function *func;
-        // struct _actor_t *actor;
-        // array
-        // object
-        // resource ?
-    } val;
-    // uint32_t scope;
-} entry_t;
+    } u;
+} ph_entry_t;
 
 #define PH_STORE_FUNC 100
-#define PH_STORE_ACTOR 101
 
-#define ENTRY_TYPE(s) (s)->type
-#define ENTRY_STRING(s) (s)->val.string
-#define ENTRY_LONG(s) (s)->val.integer
-#define ENTRY_DOUBLE(s) (s)->val.floating
-#define ENTRY_BOOL(s) (s)->val.boolean
-#define ENTRY_FUNC(s) (s)->val.func
+#define PH_ENTRY_TYPE(s) (s)->type
+#define PH_ENTRY_STRING(s) (s)->u.string
+#define PH_ENTRY_LONG(s) (s)->u.integer
+#define PH_ENTRY_DOUBLE(s) (s)->u.floating
+#define PH_ENTRY_BOOL(s) (s)->u.boolean
+#define PH_ENTRY_FUNC(s) (s)->u.func
 
-void ph_convert_entry_to_zval(zval *value, entry_t *s);
-int ph_convert_zval_to_entry(entry_t *e, zval *value);
-void ph_entry_delete(void *store);
-void ph_entry_delete_value(entry_t *entry);
-entry_t *create_new_entry(zval *value);
+void ph_entry_convert_to_zval(zval *value, ph_entry_t *entry);
+int ph_entry_convert_from_zval(ph_entry_t *entry, zval *value);
+void ph_entry_free(void *entry_void);
+void ph_entry_value_free(ph_entry_t *entry);
+ph_entry_t *ph_entry_create_from_zval(zval *value);
 
 #endif

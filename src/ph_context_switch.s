@@ -1,9 +1,9 @@
 .section	__TEXT,__text,regular,pure_instructions
 .macosx_version_min 10, 10
 
-  .globl _ph_get_context
+  .globl _ph_context_get
   .align 4, 0x90
-_ph_get_context:                               ## @ph_get_context
+_ph_context_get:                               ## @ph_context_get
   .cfi_startproc
   pushq %rbp
   movq %rsp, %rbp
@@ -25,9 +25,9 @@ _ph_get_context:                               ## @ph_get_context
   ret
   .cfi_endproc
 
-  .globl _ph_set_context
+  .globl _ph_context_set
   .align 4, 0x90
-_ph_set_context:                               ## @ph_set_context
+_ph_context_set:                               ## @ph_context_set
   .cfi_startproc
   pushq %rbp
   movq %rsp, %rbp
@@ -49,9 +49,9 @@ _ph_set_context:                               ## @ph_set_context
   ret
   .cfi_endproc
 
-  .globl _ph_swap_context
+  .globl _ph_context_swap
   .align 4, 0x90
-_ph_swap_context:                               ## @ph_swap_context
+_ph_context_swap:                               ## @ph_context_swap
   .cfi_startproc
   pushq %rbp
   movq %rsp, %rbp

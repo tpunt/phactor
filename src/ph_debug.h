@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-present The PHP Group                             |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -12,16 +12,26 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author: Thomas Punt <tpunt@php.net>                                  |
   +----------------------------------------------------------------------+
 */
 
 #ifndef PH_DEBUG_H
 #define PH_DEBUG_H
 
-#include "php_phactor.h"
+#include "src/ds/ph_queue.h"
 
-void debug_tasks(task_t *task);
-void debug_actor_system(actor_system_t *actor_system);
+#if 0
+# define pthread_mutex_lock(mut) \
+    printf("A: %s (%s:%d)\n", #mut, __FILE__, __LINE__); \
+    pthread_mutex_lock(mut);
+
+# define pthread_mutex_unlock(mut) \
+    printf("R: %s (%s:%d)\n", #mut, __FILE__, __LINE__); \
+    pthread_mutex_unlock(mut);
+#endif
+
+void ph_debug_tasks(ph_queue_t *tasks);
+void ph_debug_actor_system(void);
 
 #endif

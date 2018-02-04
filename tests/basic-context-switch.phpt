@@ -11,7 +11,8 @@ $actorSystem = new ActorSystem(true);
 register('test', Test::class);
 register('test2', Test2::class);
 
-class Test extends Actor {
+class Test extends Actor
+{
     public function receive($sender, $message)
     {
         var_dump($message);

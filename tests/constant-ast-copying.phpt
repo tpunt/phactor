@@ -14,7 +14,7 @@ class A
 {
     public static function B($a = Z, $b = Z . Z)
     {
-		var_dump($a, $b);
+        var_dump($a, $b);
     }
 }
 
@@ -27,7 +27,7 @@ class Test extends Actor
 
     public function receive($sender, $message)
     {
-		A::B();
+        A::B();
         ActorSystem::shutdown();
     }
 }

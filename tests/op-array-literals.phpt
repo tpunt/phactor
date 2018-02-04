@@ -13,14 +13,14 @@ class A
 {
     public static function B()
     {
-		return 'a';
-		return 1.1;
-		return 1;
-		return null;
-		return true;
-		return false;
+        return 'a';
+        return 1.1;
+        return 1;
+        return null;
+        return true;
+        return false;
         return [];
-		return $a;
+        return $a;
     }
 }
 

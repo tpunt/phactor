@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-present The PHP Group                             |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -12,22 +12,27 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author: Thomas Punt <tpunt@php.net>                                  |
   +----------------------------------------------------------------------+
 */
 
 #ifndef PH_HASHTABLE_H
 #define PH_HASHTABLE_H
 
+#include <pthread.h>
+
+#include "Zend/zend_types.h"
+
+#include "src/ph_debug.h"
+#include "src/ph_string.h"
 
 // #define PH_HT_FE(ht, key, value) \
     // for (int i = 0; i < ht.size; ++i) { \
         // ph_bucket_t *b = ht.values + i;
 
 // hash table flags
-#define FREE_KEYS 1
+#define FREE_KEYS 1 // @todo currently unused - still needed?
 
-// @todo store hash value in ph_string_t instead?
 typedef struct _ph_bucket_t {
     ph_string_t *key; // @todo remove pointer to key?
     void *value;
@@ -35,7 +40,6 @@ typedef struct _ph_bucket_t {
     int variance;
 } ph_bucket_t;
 
-// @todo compact so ht struct is 16 bytes
 typedef struct _ph_hashtable_t {
     ph_bucket_t *values;
     int size;
@@ -57,8 +61,7 @@ typedef struct _ph_hashtable_t {
                     (dtor)(b->value); \
 \
                     if ((ht)->flags & FREE_KEYS) { \
-                        free(PH_STRV_P(b->key)); \
-                        free(b->key); \
+                        ph_str_free(b->key); \
                     } \
 \
                     b->hash = -1; \

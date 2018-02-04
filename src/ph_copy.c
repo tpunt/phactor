@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-present The PHP Group                             |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -12,13 +12,14 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author: Thomas Punt <tpunt@php.net>                                  |
   +----------------------------------------------------------------------+
 */
 
-#include "ph_copy.h"
 #include "php_phactor.h"
-#include "ph_zend.h"
+#include "src/ph_copy.h"
+#include "src/ph_zend.h"
+#include "src/classes/actor_system.h"
 
 static void copy_executor_globals(void);
 static zend_function *copy_function(zend_function *old_func, zend_class_entry *new_ce);

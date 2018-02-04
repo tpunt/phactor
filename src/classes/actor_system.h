@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-present The PHP Group                             |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -12,35 +12,38 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author: Thomas Punt <tpunt@php.net>                                  |
   +----------------------------------------------------------------------+
 */
 
-/* $Id$ */
+#ifndef PH_ACTOR_SYSTEM_H
+#define PH_ACTOR_SYSTEM_H
 
-#include "ph_context.h"
-#include <stdlib.h>
-#include <string.h>
+#include "src/ds/ph_hashtable.h"
+#include "src/ds/ph_vector.h"
+#include "src/classes/actor.h"
+#include "src/classes/common.h"
 
-void ph_init_context(ph_context_t *c, void (*cb)(void))
-{
-    c->stack_size = STACK_SIZE;
-    c->stack_space = calloc(1, c->stack_size + STACK_ALIGNMENT - 1);
-    c->aligned_stack_space = (void *)((uintptr_t)c->stack_space + (STACK_ALIGNMENT - 1) & ~(STACK_ALIGNMENT - 1));
-    c->cb = cb;
+//sysconf(_SC_NPROCESSORS_ONLN);
+#define THREAD_COUNT 10
 
-    ph_reset_context(c);
-}
+typedef struct _ph_actor_system_t {
+    // char system_reference[10]; // @todo needed when remote actors are introduced
+    zend_bool initialised;
+    ph_hashtable_t actors;
+    ph_hashtable_t named_actors;
+    int thread_count;
+    int prepared_thread_count;
+    int finished_thread_count;
+    ph_thread_t *worker_threads;
+    ph_vector_t *actor_removals;
+    zend_bool daemonised;
+    zend_object obj;
+} ph_actor_system_t;
 
-void ph_reset_context(ph_context_t *c)
-{
-    memset(&c->mc, 0, sizeof(ph_mcontext_t));
+extern ph_thread_t main_thread;
+extern pthread_mutex_t phactor_mutex;
 
-    c->started = 0;
+void actor_system_ce_init(void);
 
-    // assumes the stack always grows downwards
-    c->mc.rbp = c->aligned_stack_space + c->stack_size;
-    c->mc.rsp = c->aligned_stack_space + c->stack_size;
-}
-
-// free context
+#endif

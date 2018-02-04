@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-present The PHP Group                             |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -12,25 +12,22 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author: Thomas Punt <tpunt@php.net>                                  |
   +----------------------------------------------------------------------+
 */
 
-#ifndef PH_GENERAL_H
-#define PH_GENERAL_H
+#ifndef PH_MESSAGE_H
+#define PH_MESSAGE_H
 
-#define PH_STRL(s) (s).len
-#define PH_STRV(s) (s).val
-#define PH_STRL_P(s) PH_STRL(*(s))
-#define PH_STRV_P(s) PH_STRV(*(s))
+#include "src/ph_entry.h"
+#include "src/ph_string.h"
 
-typedef struct _ph_string_t {
-    int len;
-    char *val;
-} ph_string_t;
+typedef struct _ph_message_t {
+    ph_string_t from_actor_ref; // could just be a pointer - what about remote actors?
+    ph_entry_t *message; // why the separate allocation?
+} ph_message_t;
 
-ph_string_t *ph_string_new(char *s, int len);
-void ph_string_update(ph_string_t *phstr, char *s, int len);
-int ph_str_eq(ph_string_t *phstr1, ph_string_t *phstr2);
+ph_message_t *ph_msg_create(ph_string_t *from_actor_ref, ph_entry_t *message);
+void ph_msg_free(void *message_void);
 
 #endif

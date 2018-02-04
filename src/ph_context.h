@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-present The PHP Group                             |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -12,12 +12,14 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author: Thomas Punt <tpunt@php.net>                                  |
   +----------------------------------------------------------------------+
 */
 
 #ifndef PH_CONTEXT_H
 #define PH_CONTEXT_H
+
+#include <main/php.h>
 
 typedef struct _ph_mcontext_t {
     void *rax; // 0 (unused)
@@ -51,10 +53,13 @@ typedef struct _ph_context_t {
 #define STACK_SIZE 1 << 15
 #define STACK_ALIGNMENT 16 // Ensure 16 byte stack alignment (for OS X)
 
-extern void ph_get_context(ph_context_t *c);
-extern void ph_swap_context(ph_context_t *from, ph_context_t *to);
-extern void ph_set_context(ph_context_t *c);
-void ph_init_context(ph_context_t *c, void (*cb)(void));
-void ph_reset_context(ph_context_t *c);
+extern void ph_context_get(ph_context_t *c);
+extern void ph_context_swap(ph_context_t *from, ph_context_t *to);
+extern void ph_context_set(ph_context_t *c);
+void ph_context_init(ph_context_t *c, void (*cb)(void));
+void ph_context_reset(ph_context_t *c);
+
+void ph_executor_globals_save(zend_executor_globals *eg);
+void ph_executor_globals_restore(zend_executor_globals *eg);
 
 #endif
