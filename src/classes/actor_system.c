@@ -501,7 +501,8 @@ PHP_METHOD(ActorSystem, __construct)
     }
 
     if (PHACTOR_G(actor_system)->initialised) {
-        zend_throw_exception_ex(NULL, 0, "Actor system already active");
+        // this has to be an E_ERROR, since an exception does not instantly bail out
+        zend_error_noreturn(E_ERROR, "The actor system has already been created");
         return;
     }
 
