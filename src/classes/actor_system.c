@@ -19,6 +19,7 @@
 #include <main/php.h>
 #include <main/php_main.h>
 #include <Zend/zend_exceptions.h>
+#include <Zend/zend_interfaces.h>
 #include <main/SAPI.h>
 #include <ext/standard/basic_functions.h>
 
@@ -549,6 +550,9 @@ void actor_system_ce_init(void)
     INIT_CLASS_ENTRY(ce, "ActorSystem", ActorSystem_methods);
     ActorSystem_ce = zend_register_internal_class(&ce);
     ActorSystem_ce->create_object = phactor_actor_system_ctor;
+    ActorSystem_ce->ce_flags |= ZEND_ACC_FINAL;
+    ActorSystem_ce->serialize = zend_class_serialize_deny;
+    ActorSystem_ce->unserialize = zend_class_unserialize_deny;
 
     memcpy(&phactor_actor_system_handlers, zh, sizeof(zend_object_handlers));
 
