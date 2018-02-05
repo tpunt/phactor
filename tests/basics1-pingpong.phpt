@@ -37,8 +37,6 @@ class Test2 extends Actor {
 
 spawn('test', Test::class);
 spawn('test2', Test2::class, 1);
-
-$actorSystem->block();
 --EXPECT--
 string(8) "(1) ping"
 string(8) "(2) pong"

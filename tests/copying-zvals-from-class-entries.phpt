@@ -56,8 +56,6 @@ class Test2 extends Actor
         ActorSystem::shutdown();
     }
 }
-
-$actorSystem->block();
 --EXPECT--
 bool(true)
 bool(false)

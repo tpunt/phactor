@@ -34,8 +34,6 @@ class Test2 extends Actor
 
 spawn('test', Test::class);
 spawn('test2', Test2::class);
-
-$actorSystem->block();
 --EXPECT--
 array(5) {
   [0]=>

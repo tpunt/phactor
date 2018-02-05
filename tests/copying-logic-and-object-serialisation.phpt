@@ -18,5 +18,4 @@ class Test
 new Test();
 
 $actorSystem = new ActorSystem();
-$actorSystem->block();
 --EXPECT--

@@ -25,8 +25,6 @@ class Test extends Actor
         ActorSystem::shutdown();
     }
 }
-
-$actorSystem->block();
 --EXPECT--
 string(5) "32767"
 string(1) "1"

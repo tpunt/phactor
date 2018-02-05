@@ -27,8 +27,6 @@ class Test extends Actor
         }
     }
 }
-
-$actorSystem->block();
 --EXPECT--
 int(1)
 int(2)

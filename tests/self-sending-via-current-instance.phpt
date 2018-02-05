@@ -27,7 +27,5 @@ class Test extends Actor
 }
 
 spawn('test', Test::class);
-
-$actorSystem->block();
 --EXPECT--
 int(1000)

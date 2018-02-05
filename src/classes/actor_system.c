@@ -20,6 +20,7 @@
 #include <main/php_main.h>
 #include <Zend/zend_exceptions.h>
 #include <main/SAPI.h>
+#include <ext/standard/basic_functions.h>
 
 #include "php_phactor.h"
 #include "src/ph_task.h"
@@ -348,6 +349,20 @@ void *worker_function(ph_thread_t *ph_thread)
     pthread_exit(NULL);
 }
 
+/* Take from ext/standard/basic_functions.c */
+void user_shutdown_function_dtor(zval *zv)
+{
+    int i;
+    php_shutdown_function_entry *shutdown_function_entry = Z_PTR_P(zv);
+
+    for (i = 0; i < shutdown_function_entry->arg_count; i++) {
+        zval_ptr_dtor(&shutdown_function_entry->arguments[i]);
+    }
+
+    efree(shutdown_function_entry->arguments);
+    efree(shutdown_function_entry);
+}
+
 void initialise_actor_system()
 {
     PHACTOR_G(actor_system)->thread_count = THREAD_COUNT;
@@ -374,6 +389,28 @@ void initialise_actor_system()
     thread = PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count;
 
     while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->prepared_thread_count);
+
+    // automatically invoke ActorSystem::block(), using [&PHACTOR_G(actor_system)->obj, "block"] callable
+    php_shutdown_function_entry shutdown_function_entry;
+    zval zcallable, zobj, zmethod;
+
+    shutdown_function_entry.arguments = emalloc(sizeof(zval));
+    shutdown_function_entry.arg_count = 1;
+
+    array_init_size(shutdown_function_entry.arguments, 2);
+    ZVAL_OBJ(&zobj, &PHACTOR_G(actor_system)->obj);
+    ZVAL_STR(&zmethod, zend_string_init(ZEND_STRL("block"), 0));
+    zend_hash_index_add_new(Z_ARR(shutdown_function_entry.arguments[0]), 0, &zobj);
+    zend_hash_index_add_new(Z_ARR(shutdown_function_entry.arguments[0]), 1, &zmethod);
+
+    if (!BG(user_shutdown_function_names)) {
+        ALLOC_HASHTABLE(BG(user_shutdown_function_names));
+        zend_hash_init(BG(user_shutdown_function_names), 0, NULL, user_shutdown_function_dtor, 0);
+    }
+
+    zend_hash_next_index_insert_mem(BG(user_shutdown_function_names), &shutdown_function_entry, sizeof(php_shutdown_function_entry));
+
+    PHACTOR_G(actor_system)->initialised = 1;
 }
 
 void force_shutdown_actor_system()
@@ -385,6 +422,12 @@ void force_shutdown_actor_system()
 
 void scheduler_blocking()
 {
+    if (!PHACTOR_G(actor_system)->initialised) {
+        return;
+    }
+
+    PHACTOR_G(actor_system)->initialised = 0;
+
     pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
     if (!PHACTOR_G(php_shutdown)) {
         PHACTOR_G(php_shutdown) = !PHACTOR_G(actor_system)->daemonised;
@@ -448,7 +491,7 @@ void php_actor_system_free_object(zend_object *obj)
 }
 
 ZEND_BEGIN_ARG_INFO(ActorSystem_construct_arginfo, 0)
-ZEND_ARG_INFO(0, flag)
+    ZEND_ARG_INFO(0, flag)
 ZEND_END_ARG_INFO()
 
 PHP_METHOD(ActorSystem, __construct)
@@ -459,6 +502,7 @@ PHP_METHOD(ActorSystem, __construct)
 
     if (PHACTOR_G(actor_system)->initialised) {
         zend_throw_exception_ex(NULL, 0, "Actor system already active");
+        return;
     }
 
     initialise_actor_system();

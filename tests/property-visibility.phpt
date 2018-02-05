@@ -34,8 +34,6 @@ class Test2 extends Test
 
 spawn('test', Test::class);
 spawn('test2', Test2::class);
-
-$actorSystem->block();
 --EXPECT--
 int(1)
 int(2)

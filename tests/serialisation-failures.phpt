@@ -36,8 +36,6 @@ class Test2 extends Actor
         ActorSystem::shutdown();
     }
 }
-
-$actorSystem->block();
 --EXPECT--
 string(41) "Failed to serialise argument 2 of spawn()"
 string(31) "Failed to serialise the message"

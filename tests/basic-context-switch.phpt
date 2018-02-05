@@ -41,8 +41,6 @@ class Test2 extends Actor
         ActorSystem::shutdown();
     }
 }
-
-$actorSystem->block();
 --EXPECT--
 int(1)
 int(2)

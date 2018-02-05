@@ -10,6 +10,5 @@ try {
 } catch (Error $e) {
     echo $e->getMessage();
 }
-
 --EXPECT--
 The ActorSystem class must first be instantiated

@@ -34,7 +34,4 @@ class TestB extends Actor
         $this->send('testa2', 1);
     }
 }
-
-$actorSystem->block();
-
 --EXPECT--

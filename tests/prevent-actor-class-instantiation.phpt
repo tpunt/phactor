@@ -12,7 +12,5 @@ try {
 } catch (Error $e) {
     echo $e->getMessage();
 }
-
-$actorSystem->block();
 --EXPECTF--
 Actors cannot be created via class instantiation - please use spawn() instead
