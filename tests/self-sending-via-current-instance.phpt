@@ -26,7 +26,7 @@ class Test extends Actor
     }
 }
 
-register('test', Test::class);
+spawn('test', Test::class);
 
 $actorSystem->block();
 --EXPECT--

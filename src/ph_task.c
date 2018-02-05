@@ -70,7 +70,7 @@ ph_task_t *ph_task_create_new_actor(ph_string_t *named_actor_key, zend_string *c
 
         for (int i = 0; i < argc; ++i) {
             if (!ph_entry_convert_from_zval(new_task->u.nat.args + i, args + i)) {
-                zend_throw_error(NULL, "Failed to serialise argument %d of register()", i + 2);
+                zend_throw_error(NULL, "Failed to serialise argument %d of spawn()", i + 2);
 
                 for (int i2 = 0; i2 < i; ++i2) {
                     ph_entry_value_free(new_task->u.nat.args + i2);

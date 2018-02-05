@@ -15,4 +15,4 @@ try {
 
 $actorSystem->block();
 --EXPECTF--
-Actors cannot be created via class instantiation - please use register() instead
+Actors cannot be created via class instantiation - please use spawn() instead

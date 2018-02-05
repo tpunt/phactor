@@ -6,7 +6,7 @@ Instantiate a new Actor object without the ActorSystem object.
 <?php
 
 try {
-    register('a', Actor::class);
+    spawn('a', Actor::class);
 } catch (Error $e) {
     echo $e->getMessage();
 }

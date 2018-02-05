@@ -35,8 +35,8 @@ class Test2 extends Actor {
     }
 };
 
-register('test', Test::class);
-register('test2', Test2::class, 1);
+spawn('test', Test::class);
+spawn('test2', Test2::class, 1);
 
 $actorSystem->block();
 --EXPECT--

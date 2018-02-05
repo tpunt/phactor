@@ -15,7 +15,7 @@ class Test extends Actor
     public function receive($sender, $message) {}
 }
 
-register('test', Test::class);
+spawn('test', Test::class);
 
 $actorSystem->block();
 --EXPECT--

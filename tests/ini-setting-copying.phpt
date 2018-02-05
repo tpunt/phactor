@@ -10,7 +10,7 @@ var_dump(ini_get('error_reporting'));
 
 $actorSystem = new ActorSystem(true);
 
-register('test', Test::class);
+spawn('test', Test::class);
 
 class Test extends Actor
 {

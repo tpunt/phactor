@@ -39,7 +39,7 @@ ph_named_actor_t *new_named_actor(void)
     return named_actor;
 }
 
-zend_long register_new_actor(zend_string *name, zend_string *class, zval *args, int argc)
+zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int argc)
 {
     zend_function *constructor;
     zval zobj;
@@ -92,12 +92,12 @@ zend_long register_new_actor(zend_string *name, zend_string *class, zval *args, 
     return new_count;
 }
 
-ZEND_BEGIN_ARG_INFO_EX(register_arginfo, 0, 0, 2)
+ZEND_BEGIN_ARG_INFO_EX(spawn_arginfo, 0, 0, 2)
     ZEND_ARG_INFO(0, name)
     ZEND_ARG_INFO(0, class)
 ZEND_END_ARG_INFO()
 
-PHP_FUNCTION(register)
+PHP_FUNCTION(spawn)
 {
     zend_string *name;
     zend_class_entry *class = Actor_ce;
@@ -110,10 +110,10 @@ PHP_FUNCTION(register)
         Z_PARAM_VARIADIC('*', args, argc)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETVAL_LONG(register_new_actor(name, class->name, args, argc));
+    RETVAL_LONG(spawn_new_actor(name, class->name, args, argc));
 }
 
 const zend_function_entry phactor_functions[] = {
-    PHP_FE(register, register_arginfo)
+    PHP_FE(spawn, spawn_arginfo)
     PHP_FE_END
 };

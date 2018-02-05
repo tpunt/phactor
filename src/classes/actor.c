@@ -278,7 +278,7 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     new_actor->obj.handlers = &phactor_actor_handlers;
 
     if (!PHACTOR_ZG(allowed_to_construct_object)) {
-        zend_throw_exception(zend_ce_error, "Actors cannot be created via class instantiation - please use register() instead", 0);
+        zend_throw_exception(zend_ce_error, "Actors cannot be created via class instantiation - please use spawn() instead", 0);
         return &new_actor->obj;
     }
 

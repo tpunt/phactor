@@ -18,7 +18,7 @@ class Test extends Actor
     public function __construct()
     {
         var_dump(self::C);
-        register('test2', Test2::class);
+        spawn('test2', Test2::class);
     }
 
     public function receive($sender, $message)
@@ -49,7 +49,7 @@ class Test2 extends Actor
     }
 }
 
-register('test', Test::class);
+spawn('test', Test::class);
 
 $actorSystem->block();
 --EXPECT--

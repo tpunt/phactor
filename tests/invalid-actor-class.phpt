@@ -8,7 +8,7 @@ is implemented, then a fatal error and a segfault is triggered.
 
 $actorSystem = new ActorSystem();
 class Test extends Actor {}
-register('test', Test::class);
+spawn('test', Test::class);
 $actorSystem->block();
 
 --EXPECTF--

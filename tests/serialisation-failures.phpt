@@ -7,12 +7,12 @@ message sending from an actor) handle failure correctly.
 $actorSystem = new ActorSystem(true);
 
 try {
-    register('test', Test::class, fopen(__FILE__, 'r'));
+    spawn('test', Test::class, fopen(__FILE__, 'r'));
 } catch (Error $e) {
     var_dump($e->getMessage());
 }
 
-register('test2', Test2::class);
+spawn('test2', Test2::class);
 
 class Test extends Actor {
     public function receive($sender, $message) {}
@@ -39,5 +39,5 @@ class Test2 extends Actor
 
 $actorSystem->block();
 --EXPECT--
-string(44) "Failed to serialise argument 2 of register()"
+string(41) "Failed to serialise argument 2 of spawn()"
 string(31) "Failed to serialise the message"

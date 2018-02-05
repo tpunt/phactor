@@ -23,7 +23,7 @@
 #include "src/classes/actor.h"
 
 ph_named_actor_t *new_named_actor(void);
-zend_long register_new_actor(zend_string *name, zend_string *class, zval *args, int argc);
+zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int argc);
 
 extern const zend_function_entry phactor_functions[];
 

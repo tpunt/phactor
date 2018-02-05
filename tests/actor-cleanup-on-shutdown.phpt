@@ -12,25 +12,25 @@ class TestA extends Actor
 {
     public function receive($sender, $message)
     {
-        register('testa3', TestA::class);
+        spawn('testa3', TestA::class);
         ActorSystem::shutdown();
     }
 }
 
-register('testa1', TestA::class);
-register('testb1', TestB::class);
+spawn('testa1', TestA::class);
+spawn('testb1', TestB::class);
 
 class TestB extends Actor
 {
     public function __construct()
     {
-        register('testa2', TestA::class);
+        spawn('testa2', TestA::class);
         $this->send('testb1', 1);
     }
 
     public function receive($sender, $message)
     {
-        register('testb2', TestA::class);
+        spawn('testb2', TestA::class);
         $this->send('testa2', 1);
     }
 }

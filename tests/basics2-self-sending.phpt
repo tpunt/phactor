@@ -7,7 +7,7 @@ Test basic message passing
 
 $actorSystem = new ActorSystem(true);
 
-register('test', Test::class);
+spawn('test', Test::class);
 
 class Test extends Actor
 {

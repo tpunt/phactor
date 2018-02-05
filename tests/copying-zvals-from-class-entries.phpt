@@ -7,8 +7,8 @@ Ensure that constants are correctly handled.
 
 $actorSystem = new ActorSystem(true);
 
-register('test', Test::class);
-register('test2', Test2::class);
+spawn('test', Test::class);
+spawn('test2', Test2::class);
 
 class Test extends Actor {
     public function receive($sender, $message)

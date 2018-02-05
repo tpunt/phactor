@@ -11,7 +11,7 @@ class Test extends Actor
     public function a(string $a, bool ...$b) : void {}
 }
 
-register('test', Test::class);
+spawn('test', Test::class);
 
 $actorSystem->block();
 --EXPECT--
