@@ -167,6 +167,7 @@ void ph_actor_free(void *actor_void)
     pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     ph_str_value_free(&actor->ref);
+    pthread_mutex_destroy(&actor->lock);
     efree(actor);
 }
 
@@ -179,13 +180,12 @@ static void receive_block(zval *actor_zval, zval *return_value)
         return;
     }
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_lock(&actor->lock);
     ph_executor_globals_save(&actor->eg);
     ph_executor_globals_restore(&PHACTOR_G(actor_system)->worker_threads[thread_offset].eg);
     actor->state = PH_ACTOR_IDLE;
 
     // @todo possible optimisation: if task queue is empty, just skip the next 7 lines
-    pthread_mutex_lock(&actor->mailbox.lock);
     if (ph_queue_size(&actor->mailbox)) { // @todo check send_local_message to see if this conflicts with it
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
         ph_task_t *task = ph_task_create_resume_actor(actor);
@@ -194,18 +194,14 @@ static void receive_block(zval *actor_zval, zval *return_value)
         ph_queue_push(&thread->tasks, task);
         pthread_mutex_unlock(&thread->tasks.lock);
     }
-    pthread_mutex_unlock(&actor->mailbox.lock);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_unlock(&actor->lock);
 
     ph_context_swap(&actor->actor_context, &PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context);
 
-    pthread_mutex_lock(&actor->mailbox.lock);
+    pthread_mutex_lock(&actor->lock);
     ph_message_t *message = ph_queue_pop(&actor->mailbox);
-    pthread_mutex_unlock(&actor->mailbox.lock);
-
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     actor->state = PH_ACTOR_ACTIVE;
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_unlock(&actor->lock);
 
     ph_entry_convert_to_zval(return_value, message->message);
     ph_msg_free(message);
@@ -244,12 +240,10 @@ void process_message(/*ph_task_t *task*/)
     ph_actor_t *for_actor = task->u.pmt.for_actor;
     zval return_value, from_actor_zval, message_zval;
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-    pthread_mutex_lock(&for_actor->mailbox.lock);
+    pthread_mutex_lock(&for_actor->lock);
     ph_message_t *message = ph_queue_pop(&for_actor->mailbox);
     for_actor->state = PH_ACTOR_ACTIVE;
-    pthread_mutex_unlock(&for_actor->mailbox.lock);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_unlock(&for_actor->lock);
 
     ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
     ph_entry_convert_to_zval(&message_zval, message->message);
@@ -291,6 +285,7 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     ph_actor_set_ref(&new_actor->ref);
     ph_queue_init(&new_actor->mailbox, ph_msg_free);
     ph_context_init(&new_actor->actor_context, process_message);
+    pthread_mutex_init(&new_actor->lock, NULL);
 
     return &new_actor->obj;
 }

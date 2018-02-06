@@ -44,7 +44,6 @@ typedef struct _ph_thread_t {
 } ph_thread_t;
 
 static __thread ph_thread_t *thread;
-static pthread_mutex_t phactor_actors_mutex;
 static pthread_mutex_t phactor_named_actors_mutex;
 
 #define PH_THREAD_G(v) thread->v

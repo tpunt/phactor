@@ -47,10 +47,7 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
 {
     ph_message_t *message = ph_msg_create(&task->u.smt.from_actor_ref, task->u.smt.message);
 
-    // @todo if holding 2 locks here proves to be too problematic, then place a
-    // mutex lock in an actor and use that instead (ignore the one in the queue)
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex)); // for to_actor->state locking
-    pthread_mutex_lock(&to_actor->mailbox.lock);
+    pthread_mutex_lock(&to_actor->lock);
     ph_queue_push(&to_actor->mailbox, message);
 
     if (to_actor->state != PH_ACTOR_ACTIVE && ph_queue_size(&to_actor->mailbox) == 1) {
@@ -64,8 +61,7 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
         }
         pthread_mutex_unlock(&thread->tasks.lock);
     }
-    pthread_mutex_unlock(&to_actor->mailbox.lock);
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+    pthread_mutex_unlock(&to_actor->lock);
 }
 
 void send_remote_message(ph_task_t *task)
@@ -154,9 +150,7 @@ void new_actor(ph_task_t *task)
 
     ph_actor_t *new_actor = (ph_actor_t *)((char *)Z_OBJ(zobj) - Z_OBJ(zobj)->handlers->offset);
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     new_actor->name = named_actor_key; // @todo how to best mutex lock this?
-    pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
     ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
     ph_hashtable_insert(&named_actor->actors, &new_actor->ref, new_actor);
@@ -249,14 +243,13 @@ again:
                 // swap into process_message
                 ph_context_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context, &for_actor->actor_context);
 
-                pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+                pthread_mutex_lock(&for_actor->lock);
                 if (for_actor->state == PH_ACTOR_ACTIVE) {
                     // Actor has finished executing (if it became blocked, then
                     // its state would currently be idle). Its state now needs
                     // to be updated (to new), and if it has any messages in its
                     // mailbox, then it needs to be rescheduled.
                     ph_context_reset(&for_actor->actor_context);
-                    pthread_mutex_lock(&for_actor->mailbox.lock);
 
                     if (ph_queue_size(&for_actor->mailbox)) {
                         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + for_actor->thread_offset;
@@ -268,26 +261,24 @@ again:
                     }
 
                     for_actor->state = PH_ACTOR_NEW;
-                    pthread_mutex_unlock(&for_actor->mailbox.lock);
                 }
-                pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+                pthread_mutex_unlock(&for_actor->lock);
                 break;
             case PH_RESUME_ACTOR_TASK:
-                pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+                pthread_mutex_lock(&current_task->u.rat.actor->lock);
                 ph_actor_t *actor = current_task->u.rat.actor;
                 actor->state = PH_ACTOR_ACTIVE;
-                pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+                pthread_mutex_unlock(&current_task->u.rat.actor->lock);
 
                 resume_actor(actor);
 
-                pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
+                pthread_mutex_lock(&actor->lock);
                 if (actor->state == PH_ACTOR_ACTIVE) {
                     // Actor has finished executing (if it became blocked, then
                     // its state would currently be idle). Its state now needs
                     // to be updated (to new), and if it has any messages in its
                     // mailbox, then it needs to be rescheduled.
                     ph_context_reset(&actor->actor_context);
-                    pthread_mutex_lock(&for_actor->mailbox.lock);
 
                     if (ph_queue_size(&for_actor->mailbox)) {
                         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
@@ -299,9 +290,8 @@ again:
                     }
 
                     actor->state = PH_ACTOR_NEW;
-                    pthread_mutex_unlock(&for_actor->mailbox.lock);
                 }
-                pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
+                pthread_mutex_unlock(&actor->lock);
                 break;
             case PH_NEW_ACTOR_TASK:
                 new_actor(current_task);

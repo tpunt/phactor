@@ -42,6 +42,7 @@ typedef struct _ph_actor_t {
     ph_actor_state_t state;
     ph_entry_t *retval; // @todo make singly-linked list?
     int thread_offset;
+    pthread_mutex_t lock;
     zend_object obj;
 } ph_actor_t;
 

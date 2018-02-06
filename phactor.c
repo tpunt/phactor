@@ -46,7 +46,6 @@ PHP_MINIT_FUNCTION(phactor)
     ph_actor_ce_init();
 
     pthread_mutex_init(&phactor_mutex, NULL);
-    pthread_mutex_init(&phactor_actors_mutex, NULL);
     pthread_mutex_init(&phactor_named_actors_mutex, NULL);
     pthread_mutex_init(&global_actor_id_lock, NULL);
 
@@ -56,7 +55,6 @@ PHP_MINIT_FUNCTION(phactor)
 PHP_MSHUTDOWN_FUNCTION(phactor)
 {
     pthread_mutex_destroy(&phactor_mutex);
-    pthread_mutex_destroy(&phactor_actors_mutex);
     pthread_mutex_destroy(&phactor_named_actors_mutex);
     pthread_mutex_destroy(&global_actor_id_lock);
 
