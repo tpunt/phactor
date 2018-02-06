@@ -250,8 +250,11 @@ again:
                 ph_context_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context, &for_actor->actor_context);
 
                 pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-                if (for_actor->state == PH_ACTOR_ACTIVE) { // update actor state if finished
-                    // hit if actor did not block at all during execution
+                if (for_actor->state == PH_ACTOR_ACTIVE) {
+                    // Actor has finished executing (if it became blocked, then
+                    // its state would currently be idle). Its state now needs
+                    // to be updated (to new), and if it has any messages in its
+                    // mailbox, then it needs to be rescheduled.
                     ph_context_reset(&for_actor->actor_context);
                     pthread_mutex_lock(&for_actor->mailbox.lock);
 
@@ -264,8 +267,8 @@ again:
                         pthread_mutex_unlock(&thread->tasks.lock);
                     }
 
-                    pthread_mutex_unlock(&for_actor->mailbox.lock);
                     for_actor->state = PH_ACTOR_NEW;
+                    pthread_mutex_unlock(&for_actor->mailbox.lock);
                 }
                 pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
                 break;
@@ -278,8 +281,11 @@ again:
                 resume_actor(actor);
 
                 pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
-                if (actor->state == PH_ACTOR_ACTIVE) { // update actor state if finished
-                    // hit if actor was blocking at all during execution
+                if (actor->state == PH_ACTOR_ACTIVE) {
+                    // Actor has finished executing (if it became blocked, then
+                    // its state would currently be idle). Its state now needs
+                    // to be updated (to new), and if it has any messages in its
+                    // mailbox, then it needs to be rescheduled.
                     ph_context_reset(&actor->actor_context);
                     pthread_mutex_lock(&for_actor->mailbox.lock);
 
@@ -292,8 +298,8 @@ again:
                         pthread_mutex_unlock(&thread->tasks.lock);
                     }
 
-                    pthread_mutex_unlock(&for_actor->mailbox.lock);
                     actor->state = PH_ACTOR_NEW;
+                    pthread_mutex_unlock(&for_actor->mailbox.lock);
                 }
                 pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
                 break;

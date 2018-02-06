@@ -244,12 +244,11 @@ void process_message(/*ph_task_t *task*/)
     ph_actor_t *for_actor = task->u.pmt.for_actor;
     zval return_value, from_actor_zval, message_zval;
 
+    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     pthread_mutex_lock(&for_actor->mailbox.lock);
     ph_message_t *message = ph_queue_pop(&for_actor->mailbox);
-    pthread_mutex_unlock(&for_actor->mailbox.lock);
-
-    pthread_mutex_lock(&PHACTOR_G(phactor_actors_mutex));
     for_actor->state = PH_ACTOR_ACTIVE;
+    pthread_mutex_unlock(&for_actor->mailbox.lock);
     pthread_mutex_unlock(&PHACTOR_G(phactor_actors_mutex));
 
     ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
