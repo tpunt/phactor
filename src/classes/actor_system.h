@@ -30,6 +30,7 @@
 typedef struct _ph_actor_system_t {
     // char system_reference[10]; // @todo needed when remote actors are introduced
     zend_bool initialised;
+    zend_bool shutdown;
     ph_hashtable_t actors;
     ph_hashtable_t named_actors;
     int thread_count;
@@ -38,11 +39,11 @@ typedef struct _ph_actor_system_t {
     ph_thread_t *worker_threads;
     ph_vector_t *actor_removals;
     zend_bool daemonised;
+    pthread_mutex_t lock;
     zend_object obj;
 } ph_actor_system_t;
 
 extern ph_thread_t main_thread;
-extern pthread_mutex_t phactor_mutex;
 
 void actor_system_ce_init(void);
 

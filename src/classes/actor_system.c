@@ -37,8 +37,6 @@ ph_actor_system_t *actor_system;
 __thread ph_task_t *currently_processing_task;
 __thread int thread_offset;
 ph_thread_t main_thread;
-pthread_mutex_t phactor_mutex;
-int php_shutdown;
 
 zend_object_handlers phactor_actor_system_handlers;
 zend_class_entry *ActorSystem_ce;
@@ -222,12 +220,12 @@ again:
         pthread_mutex_unlock(&PH_THREAD_G(tasks).lock);
 
         if (!current_task) {
-            pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
-            if (PHACTOR_G(php_shutdown)) {
-                pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+            pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
+            if (PHACTOR_G(actor_system)->shutdown) {
+                pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
                 break;
             }
-            pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+            pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
             continue;
         }
 
@@ -319,9 +317,9 @@ void *worker_function(ph_thread_t *ph_thread)
     php_request_startup();
     copy_execution_context();
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
     ++PHACTOR_G(actor_system)->prepared_thread_count;
-    pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
 
     ph_executor_globals_save(&ph_thread->eg);
 
@@ -329,9 +327,9 @@ void *worker_function(ph_thread_t *ph_thread)
 
     PG(report_memleaks) = 0;
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
     ++PHACTOR_G(actor_system)->finished_thread_count;
-    pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
 
     // Block here to prevent premature freeing of actors when the could be being
     // used by other threads
@@ -368,6 +366,7 @@ void initialise_actor_system()
     PHACTOR_G(main_thread).ls = TSRMLS_CACHE;
     PHACTOR_G(actor_system)->actor_removals = calloc(sizeof(ph_vector_t), PHACTOR_G(actor_system)->thread_count + 1);
     PHACTOR_G(actor_system)->worker_threads = calloc(sizeof(ph_thread_t), PHACTOR_G(actor_system)->thread_count + 1);
+    pthread_mutex_init(&PHACTOR_G(actor_system)->lock, NULL);
 
     for (int i = 0; i <= PHACTOR_G(actor_system)->thread_count; ++i) {
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + i;
@@ -412,9 +411,9 @@ void initialise_actor_system()
 
 void force_shutdown_actor_system()
 {
-    pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
-    PHACTOR_G(php_shutdown) = 1; // @todo this will not work, since worker threads may still be working
-    pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
+    PHACTOR_G(actor_system)->shutdown = 1; // @todo this will not work, since worker threads may still be working
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
 }
 
 void scheduler_blocking()
@@ -425,11 +424,11 @@ void scheduler_blocking()
 
     PHACTOR_G(actor_system)->initialised = 0;
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_mutex));
-    if (!PHACTOR_G(php_shutdown)) {
-        PHACTOR_G(php_shutdown) = !PHACTOR_G(actor_system)->daemonised;
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
+    if (!PHACTOR_G(actor_system)->shutdown) {
+        PHACTOR_G(actor_system)->shutdown = !PHACTOR_G(actor_system)->daemonised;
     }
-    pthread_mutex_unlock(&PHACTOR_G(phactor_mutex));
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
 
     // @todo use own specialised loop here? Only messages should need to be
     // handled in the main thread (for now)
@@ -481,6 +480,8 @@ void php_actor_system_free_object(zend_object *obj)
     for (int i = 0; i <= PHACTOR_G(actor_system)->thread_count; ++i) {
         ph_vector_destroy(PHACTOR_G(actor_system)->actor_removals + i);
     }
+
+    pthread_mutex_destroy(&PHACTOR_G(actor_system)->lock);
 
     free(PHACTOR_G(actor_system)->actor_removals);
     free(PHACTOR_G(actor_system)->actors.values); // @todo should use ph_hashtable_destroy (should be empty)
