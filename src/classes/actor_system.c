@@ -475,6 +475,10 @@ void php_actor_system_dtor_object(zend_object *obj)
 
 void php_actor_system_free_object(zend_object *obj)
 {
+    if (!PHACTOR_G(actor_system)->initialised) {
+        return;
+    }
+
     ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, ph_actor_free, ph_actor_t *, thread_offset, thread_offset);
 
     for (int i = 0; i <= PHACTOR_G(actor_system)->thread_count; ++i) {
@@ -504,11 +508,15 @@ PHP_METHOD(ActorSystem, __construct)
     ZEND_PARSE_PARAMETERS_END();
 
     if (thread_count < 1 || thread_count > 1024) {
-        zend_error_noreturn(E_ERROR, "Invalid thread count provided (an integer between 1 and 1024 (inclusive) is required)");
+        zend_throw_error(NULL, "Invalid thread count provided (an integer between 1 and 1024 (inclusive) is required)");
         return;
     }
 
     if (PHACTOR_G(actor_system)->initialised) {
+        pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
+        PHACTOR_G(actor_system)->shutdown = 1;
+        pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
+
         // this has to be an E_ERROR, since an exception does not instantly bail out
         zend_error_noreturn(E_ERROR, "The actor system has already been created");
         return;
