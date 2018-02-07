@@ -22,23 +22,17 @@
 #include <main/php.h>
 
 typedef struct _ph_mcontext_t {
-    void *rax; // 0 (unused)
-    void *rbx; // 8
-    void *rcx; // 16 (unused)
-    void *rdx; // 24 (unused)
-    void *rdi; // 32 (unused)
-    void *rsi; // 40 (unused)
-    void *rbp; // 48
-    void *rsp; // 56
-    void *r8;  // 64
-    void *r9;  // 72
-    void *r10; // 80
-    void *r11; // 88
-    void *r12; // 96
-    void *r13; // 104
-    void *r14; // 112
-    void *r15; // 120
-    void *rip; // 128 (unused)
+    void *rbx; // 0
+    void *rbp; // 8
+    void *rsp; // 16
+    void *r8;  // 24
+    void *r9;  // 32
+    void *r10; // 40
+    void *r11; // 48
+    void *r12; // 56
+    void *r13; // 64
+    void *r14; // 72
+    void *r15; // 80
 } ph_mcontext_t;
 
 typedef struct _ph_context_t {
