@@ -544,7 +544,7 @@ void actor_system_ce_init(void)
     zend_class_entry ce;
     zend_object_handlers *zh = zend_get_std_object_handlers();
 
-    INIT_CLASS_ENTRY(ce, "ActorSystem", ActorSystem_methods);
+    INIT_CLASS_ENTRY(ce, "phactor\\ActorSystem", ActorSystem_methods);
     ActorSystem_ce = zend_register_internal_class(&ce);
     ActorSystem_ce->create_object = phactor_actor_system_ctor;
     ActorSystem_ce->ce_flags |= ZEND_ACC_FINAL;

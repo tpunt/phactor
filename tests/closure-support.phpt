@@ -5,6 +5,8 @@ Enable closures to be passed as messages
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem(true);
 
 class Test extends Actor

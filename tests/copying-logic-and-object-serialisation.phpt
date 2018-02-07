@@ -3,6 +3,8 @@ Testing that serialising objects in the context copying code fails
 --FILE--
 <?php
 
+use phactor\ActorSystem;
+
 class Test
 {
     public $a;

@@ -6,6 +6,8 @@ conditions on reference counts and ultimately heap corruption issues.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem();
 
 class Test extends Actor

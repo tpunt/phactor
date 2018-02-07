@@ -7,6 +7,8 @@ Arrays do need duplicating.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem(true);
 
 class A

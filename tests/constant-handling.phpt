@@ -5,6 +5,8 @@ Ensure that constants are correctly handled.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 const A = [1,2,3];
 
 $actorSystem = new ActorSystem(true);

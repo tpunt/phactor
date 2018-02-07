@@ -5,6 +5,8 @@ This is not safe to do, and so it is prevented.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem();
 
 try {

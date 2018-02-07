@@ -3,6 +3,8 @@ Testing the correct copying of ini settings
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 ini_set('error_reporting', 32767);
 var_dump(ini_get('error_reporting'));
 ini_set('error_reporting', 1);

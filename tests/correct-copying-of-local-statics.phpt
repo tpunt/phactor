@@ -3,6 +3,8 @@ Ensure correct copying of local static variables.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 const A = 1;
 
 $actorSystem = new ActorSystem();

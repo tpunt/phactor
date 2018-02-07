@@ -382,7 +382,7 @@ void ph_actor_ce_init(void)
     zend_class_entry ce;
     zend_object_handlers *zh = zend_get_std_object_handlers();
 
-    INIT_CLASS_ENTRY(ce, "Actor", Actor_methods);
+    INIT_CLASS_ENTRY(ce, "phactor\\Actor", Actor_methods);
     Actor_ce = zend_register_internal_class(&ce);
     Actor_ce->ce_flags |= ZEND_ACC_ABSTRACT;
     Actor_ce->create_object = phactor_actor_ctor;

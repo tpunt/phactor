@@ -114,6 +114,6 @@ PHP_FUNCTION(spawn)
 }
 
 const zend_function_entry phactor_functions[] = {
-    PHP_FE(spawn, spawn_arginfo)
+    ZEND_NS_FE("phactor", spawn, spawn_arginfo)
     PHP_FE_END
 };

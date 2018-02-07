@@ -6,6 +6,8 @@ the zval ast value.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 const Z = 1;
 
 $actorSystem = new ActorSystem(true);

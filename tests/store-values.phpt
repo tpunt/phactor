@@ -5,6 +5,8 @@ Ensure that different values are correctly handled by the store.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem(true);
 
 class Test extends Actor

@@ -6,6 +6,8 @@ objects.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem(true);
 
 spawn('test', Test::class);

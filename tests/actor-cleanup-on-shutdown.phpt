@@ -6,6 +6,8 @@ actors in the main PHP thread.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem(true);
 
 class TestA extends Actor

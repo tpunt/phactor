@@ -4,6 +4,8 @@ message sending from an actor) handle failure correctly.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem(true);
 
 try {

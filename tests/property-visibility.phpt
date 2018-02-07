@@ -5,6 +5,8 @@ Ensure that visibility of properties for Actor-based objects is still enforced.
 --FILE--
 <?php
 
+use phactor\{ActorSystem, Actor, function spawn};
+
 $actorSystem = new ActorSystem(true);
 
 class Test extends Actor
