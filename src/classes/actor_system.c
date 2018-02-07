@@ -358,10 +358,9 @@ void user_shutdown_function_dtor(zval *zv)
     efree(shutdown_function_entry);
 }
 
-void initialise_actor_system()
+void initialise_actor_system(zend_long thread_count)
 {
-    PHACTOR_G(actor_system)->thread_count = THREAD_COUNT;
-
+    PHACTOR_G(actor_system)->thread_count = thread_count;
     PHACTOR_G(main_thread).id = (ulong) pthread_self();
     PHACTOR_G(main_thread).ls = TSRMLS_CACHE;
     PHACTOR_G(actor_system)->actor_removals = calloc(sizeof(ph_vector_t), PHACTOR_G(actor_system)->thread_count + 1);
@@ -461,6 +460,7 @@ static zend_object* phactor_actor_system_ctor(zend_class_entry *entry)
         object_properties_init(&PHACTOR_G(actor_system)->obj, entry);
 
         PHACTOR_G(actor_system)->obj.handlers = &phactor_actor_system_handlers;
+        PHACTOR_G(actor_system)->thread_count = sysconf(_SC_NPROCESSORS_ONLN) + ASYNC_THREAD_COUNT;
     }
 
     return &PHACTOR_G(actor_system)->obj;
@@ -489,12 +489,22 @@ void php_actor_system_free_object(zend_object *obj)
 }
 
 ZEND_BEGIN_ARG_INFO(ActorSystem_construct_arginfo, 0)
-    ZEND_ARG_INFO(0, flag)
+    ZEND_ARG_INFO(0, daemonised)
+    ZEND_ARG_INFO(0, thread_count)
 ZEND_END_ARG_INFO()
 
 PHP_METHOD(ActorSystem, __construct)
 {
-    if (zend_parse_parameters(ZEND_NUM_ARGS(), "|b", &PHACTOR_G(actor_system)->daemonised) != SUCCESS) {
+    zend_long thread_count = PHACTOR_G(actor_system)->thread_count;
+
+    ZEND_PARSE_PARAMETERS_START(0, 2)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_BOOL(PHACTOR_G(actor_system)->daemonised)
+        Z_PARAM_LONG(thread_count)
+    ZEND_PARSE_PARAMETERS_END();
+
+    if (thread_count < 1 || thread_count > 1024) {
+        zend_error_noreturn(E_ERROR, "Invalid thread count provided (an integer between 1 and 1024 (inclusive) is required)");
         return;
     }
 
@@ -504,7 +514,7 @@ PHP_METHOD(ActorSystem, __construct)
         return;
     }
 
-    initialise_actor_system();
+    initialise_actor_system(thread_count);
 }
 
 ZEND_BEGIN_ARG_INFO(ActorSystem_shutdown_arginfo, 0)

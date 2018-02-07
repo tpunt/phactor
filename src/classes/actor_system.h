@@ -24,8 +24,7 @@
 #include "src/classes/actor.h"
 #include "src/classes/common.h"
 
-//sysconf(_SC_NPROCESSORS_ONLN);
-#define THREAD_COUNT 10
+#define ASYNC_THREAD_COUNT 10
 
 typedef struct _ph_actor_system_t {
     // char system_reference[10]; // @todo needed when remote actors are introduced
