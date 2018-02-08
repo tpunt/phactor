@@ -370,10 +370,10 @@ ZEND_BEGIN_ARG_INFO(Actor_abstract_receive_arginfo, 0)
 ZEND_END_ARG_INFO()
 
 zend_function_entry Actor_methods[] = {
-    PHP_ME(Actor, send, Actor_send_arginfo, ZEND_ACC_PROTECTED)
-    PHP_ME(Actor, remove, Actor_remove_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ME(Actor, send, Actor_send_arginfo, ZEND_ACC_PROTECTED | ZEND_ACC_FINAL)
+    PHP_ME(Actor, remove, Actor_remove_arginfo, ZEND_ACC_PUBLIC | ZEND_ACC_FINAL)
     PHP_ABSTRACT_ME(Actor, receive, Actor_abstract_receive_arginfo)
-    PHP_ME(Actor, receiveBlock, Actor_abstract_receiveblock_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ME(Actor, receiveBlock, Actor_abstract_receiveblock_arginfo, ZEND_ACC_PUBLIC | ZEND_ACC_FINAL)
     PHP_FE_END
 };
 
