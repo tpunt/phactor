@@ -23,8 +23,6 @@
 #include "src/ph_entry.h"
 #include "src/classes/actor.h"
 
-typedef struct _ph_actor_t ph_actor_t;
-
 typedef enum _ph_task_type_t {
     PH_PROCESS_MESSAGE_TASK,
     PH_SEND_MESSAGE_TASK,

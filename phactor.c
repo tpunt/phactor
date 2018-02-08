@@ -28,7 +28,6 @@
 #include "src/ph_functions.h"
 #include "src/classes/actor_system.h"
 #include "src/classes/actor.h"
-#include "src/classes/common.h"
 
 #ifndef ZTS
 # error "Zend Thread Safety (ZTS) mode is required"
@@ -37,6 +36,9 @@
 #if !defined(ZEND_ENABLE_STATIC_TSRMLS_CACHE) || !ZEND_ENABLE_STATIC_TSRMLS_CACHE
 # error "TSRMLS static cache is required"
 #endif
+
+extern pthread_mutex_t phactor_named_actors_mutex;
+extern pthread_mutex_t global_actor_id_lock;
 
 ZEND_DECLARE_MODULE_GLOBALS(phactor)
 

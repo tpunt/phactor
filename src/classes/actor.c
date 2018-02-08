@@ -30,6 +30,7 @@
 extern ph_actor_system_t *actor_system;
 extern __thread ph_task_t *currently_processing_task;
 extern __thread int thread_offset;
+extern pthread_mutex_t phactor_named_actors_mutex;
 
 pthread_mutex_t global_actor_id_lock;
 int global_actor_id;
@@ -242,6 +243,7 @@ void process_message(/*ph_task_t *task*/)
 
     pthread_mutex_lock(&for_actor->lock);
     ph_message_t *message = ph_queue_pop(&for_actor->mailbox);
+    ZEND_ASSERT(message);
     for_actor->state = PH_ACTOR_ACTIVE;
     pthread_mutex_unlock(&for_actor->lock);
 

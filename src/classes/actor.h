@@ -24,7 +24,6 @@
 #include "src/ds/ph_queue.h"
 #include "src/ph_string.h"
 #include "src/ds/ph_hashtable.h"
-#include "src/classes/common.h"
 
 typedef enum _ph_actor_state_t {
     PH_ACTOR_NEW,   // not waiting - starts a fresh context
@@ -64,7 +63,5 @@ ph_actor_t *ph_actor_retrieve_from_ref(ph_string_t *actor_ref);
 void ph_actor_ce_init(void);
 void ph_actor_free(void *actor_void);
 void ph_actor_remove(void *target_actor_void);
-
-extern pthread_mutex_t global_actor_id_lock;
 
 #endif

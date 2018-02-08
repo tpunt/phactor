@@ -19,12 +19,28 @@
 #ifndef PH_ACTOR_SYSTEM_H
 #define PH_ACTOR_SYSTEM_H
 
+#include <pthread.h>
+
+#include <main/php.h>
+
+#include "src/ph_context.h"
 #include "src/ds/ph_hashtable.h"
 #include "src/ds/ph_vector.h"
+#include "src/ds/ph_queue.h"
 #include "src/classes/actor.h"
-#include "src/classes/common.h"
 
 #define ASYNC_THREAD_COUNT 10
+
+typedef struct _ph_thread_t {
+    pthread_t pthread; // must be first member
+    zend_ulong id; // local storage ID used to fetch local storage data
+    zend_executor_globals eg;
+    ph_queue_t tasks;
+    pthread_mutex_t ph_task_mutex;
+    int offset;
+    void*** ls; // pointer to local storage in TSRM
+    ph_context_t thread_context;
+} ph_thread_t;
 
 typedef struct _ph_actor_system_t {
     // char system_reference[10]; // @todo needed when remote actors are introduced
@@ -41,6 +57,8 @@ typedef struct _ph_actor_system_t {
     pthread_mutex_t lock;
     zend_object obj;
 } ph_actor_system_t;
+
+#define PH_THREAD_G(v) thread->v
 
 extern ph_thread_t main_thread;
 

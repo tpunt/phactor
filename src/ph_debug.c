@@ -21,6 +21,7 @@
 #endif
 
 #include "php_phactor.h"
+#include "src/ph_task.h"
 #include "src/ph_debug.h"
 #include "src/classes/actor_system.h"
 

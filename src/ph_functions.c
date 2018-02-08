@@ -20,11 +20,12 @@
 #include <Zend/zend_exceptions.h>
 
 #include "php_phactor.h"
-#include "src/ds/ph_queue.h"
+#include "src/ph_task.h"
 #include "src/ph_debug.h"
+#include "src/ds/ph_queue.h"
 #include "src/classes/actor_system.h"
-#include "src/classes/common.h"
 
+extern pthread_mutex_t phactor_named_actors_mutex;
 extern ph_actor_system_t *actor_system;
 extern zend_class_entry *Actor_ce;
 

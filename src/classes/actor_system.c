@@ -35,8 +35,11 @@
 
 ph_actor_system_t *actor_system;
 __thread ph_task_t *currently_processing_task;
+__thread ph_thread_t *thread;
 __thread int thread_offset;
 ph_thread_t main_thread;
+
+pthread_mutex_t phactor_named_actors_mutex;
 
 zend_object_handlers phactor_actor_system_handlers;
 zend_class_entry *ActorSystem_ce;
