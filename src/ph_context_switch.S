@@ -1,10 +1,18 @@
-.section	__TEXT,__text,regular,pure_instructions
-.macosx_version_min 10, 10
-
-    .globl _ph_context_get
-    .align 4, 0x90
-_ph_context_get:                                 ## @ph_context_get
+#ifdef __APPLE__
+# define FN(name) \
+    .globl _##name; \
+    .align 4, 0x90; \
+    _##name##: \
     .cfi_startproc
+#else
+# define FN(name) \
+    .globl name; \
+    .type name, @function; \
+    name: \
+    .cfi_startproc
+#endif
+
+FN(ph_context_get)
     pushq %rbp
     movq %rsp, %rbp
 
@@ -25,10 +33,7 @@ _ph_context_get:                                 ## @ph_context_get
     ret
     .cfi_endproc
 
-    .globl _ph_context_set
-    .align 4, 0x90
-_ph_context_set:                                 ## @ph_context_set
-    .cfi_startproc
+FN(ph_context_set)
     pushq %rbp
     movq %rsp, %rbp
 
@@ -49,10 +54,7 @@ _ph_context_set:                                 ## @ph_context_set
     ret
     .cfi_endproc
 
-    .globl _ph_context_swap
-    .align 4, 0x90
-_ph_context_swap:                                ## @ph_context_swap
-    .cfi_startproc
+FN(ph_context_swap)
     pushq %rbp
     movq %rsp, %rbp
 
