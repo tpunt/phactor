@@ -27,17 +27,17 @@ class Test2 extends Actor
     const E = true, F = false;
 
     public const X = [
-        __DIR__ . 'A',
+        __DIR__ . '/A',
         ['B' => 'c']
     ];
 
     public static $y = [
-        __DIR__ . 'A',
+        __DIR__ . '/A',
         ['B' => 'c']
     ];
 
     public $z = [
-        __DIR__ . 'A',
+        __DIR__ . '/A',
         ['B' => 'c']
     ];
 
@@ -58,7 +58,7 @@ class Test2 extends Actor
         ActorSystem::shutdown();
     }
 }
---EXPECT--
+--EXPECTF--
 bool(true)
 bool(false)
 bool(true)
@@ -70,7 +70,7 @@ bool(false)
 string(28) "Undefined class constant 'B'"
 array(2) {
   [0]=>
-  string(36) "/Users/tpunt/prog/php/phactor/testsA"
+  string(%d) "%s/A"
   [1]=>
   array(1) {
     ["B"]=>
@@ -79,7 +79,7 @@ array(2) {
 }
 array(2) {
   [0]=>
-  string(36) "/Users/tpunt/prog/php/phactor/testsA"
+  string(%d) "%s/A"
   [1]=>
   array(1) {
     ["B"]=>
@@ -88,7 +88,7 @@ array(2) {
 }
 array(2) {
   [0]=>
-  string(36) "/Users/tpunt/prog/php/phactor/testsA"
+  string(%d) "%s/A"
   [1]=>
   array(1) {
     ["B"]=>
