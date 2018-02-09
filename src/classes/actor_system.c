@@ -282,7 +282,7 @@ void message_handling_loop(void)
                     // mailbox, then it needs to be rescheduled.
                     ph_context_reset(&actor->actor_context);
 
-                    if (ph_queue_size(&for_actor->mailbox)) {
+                    if (ph_queue_size(&actor->mailbox)) {
                         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
                         ph_task_t *task = ph_task_create_process_message(actor);
 
