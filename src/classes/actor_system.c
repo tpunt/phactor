@@ -215,7 +215,6 @@ void perform_actor_removals(void)
 void message_handling_loop(void)
 {
     while (1) {
-again:
         perform_actor_removals();
 
         pthread_mutex_lock(&PH_THREAD_G(tasks).lock);
@@ -235,7 +234,9 @@ again:
         switch (current_task->type) {
             case PH_SEND_MESSAGE_TASK:
                 if (!send_message(current_task)) {
-                    goto again; //  prevents freeing of current task if the message was never sent
+                    // skip the freeing of the current task if the message was never sent
+                    // this can occur if an actor is still being spawned
+                    continue;
                 }
                 break;
             case PH_PROCESS_MESSAGE_TASK:
