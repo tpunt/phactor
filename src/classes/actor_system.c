@@ -212,6 +212,30 @@ void perform_actor_removals(void)
     pthread_mutex_unlock(&actor_removals->lock);
 }
 
+static void handle_actor_next_action(ph_actor_t *actor)
+{
+    pthread_mutex_lock(&actor->lock);
+    if (actor->state == PH_ACTOR_ACTIVE) {
+        // Actor has finished executing (if it became blocked, then
+        // its state would currently be idle). Its state now needs
+        // to be updated (to new), and if it has any messages in its
+        // mailbox, then it needs to be rescheduled.
+        ph_context_reset(&actor->actor_context);
+
+        if (ph_queue_size(&actor->mailbox)) {
+            ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
+            ph_task_t *task = ph_task_create_process_message(actor);
+
+            pthread_mutex_lock(&thread->tasks.lock);
+            ph_queue_push(&thread->tasks, task);
+            pthread_mutex_unlock(&thread->tasks.lock);
+        }
+
+        actor->state = PH_ACTOR_NEW;
+    }
+    pthread_mutex_unlock(&actor->lock);
+}
+
 void message_handling_loop(void)
 {
     while (1) {
@@ -242,29 +266,10 @@ void message_handling_loop(void)
             case PH_PROCESS_MESSAGE_TASK:
                 currently_processing_task = current_task; // tls for the currently processing actor
                 ph_actor_t *for_actor = current_task->u.pmt.for_actor;
+
                 // swap into process_message
                 ph_context_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context, &for_actor->actor_context);
-
-                pthread_mutex_lock(&for_actor->lock);
-                if (for_actor->state == PH_ACTOR_ACTIVE) {
-                    // Actor has finished executing (if it became blocked, then
-                    // its state would currently be idle). Its state now needs
-                    // to be updated (to new), and if it has any messages in its
-                    // mailbox, then it needs to be rescheduled.
-                    ph_context_reset(&for_actor->actor_context);
-
-                    if (ph_queue_size(&for_actor->mailbox)) {
-                        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + for_actor->thread_offset;
-                        ph_task_t *task = ph_task_create_process_message(for_actor);
-
-                        pthread_mutex_lock(&thread->tasks.lock);
-                        ph_queue_push(&thread->tasks, task);
-                        pthread_mutex_unlock(&thread->tasks.lock);
-                    }
-
-                    for_actor->state = PH_ACTOR_NEW;
-                }
-                pthread_mutex_unlock(&for_actor->lock);
+                handle_actor_next_action(for_actor);
                 break;
             case PH_RESUME_ACTOR_TASK:
                 pthread_mutex_lock(&current_task->u.rat.actor->lock);
@@ -273,27 +278,7 @@ void message_handling_loop(void)
                 pthread_mutex_unlock(&current_task->u.rat.actor->lock);
 
                 resume_actor(actor);
-
-                pthread_mutex_lock(&actor->lock);
-                if (actor->state == PH_ACTOR_ACTIVE) {
-                    // Actor has finished executing (if it became blocked, then
-                    // its state would currently be idle). Its state now needs
-                    // to be updated (to new), and if it has any messages in its
-                    // mailbox, then it needs to be rescheduled.
-                    ph_context_reset(&actor->actor_context);
-
-                    if (ph_queue_size(&actor->mailbox)) {
-                        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
-                        ph_task_t *task = ph_task_create_process_message(actor);
-
-                        pthread_mutex_lock(&thread->tasks.lock);
-                        ph_queue_push(&thread->tasks, task);
-                        pthread_mutex_unlock(&thread->tasks.lock);
-                    }
-
-                    actor->state = PH_ACTOR_NEW;
-                }
-                pthread_mutex_unlock(&actor->lock);
+                handle_actor_next_action(actor);
                 break;
             case PH_NEW_ACTOR_TASK:
                 new_actor(current_task);
