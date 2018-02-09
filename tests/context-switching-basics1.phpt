@@ -1,8 +1,5 @@
 --TEST--
-Allow for Actors to be properties
---DESCRIPTION--
-Allow for Actor-based objects to be assigned as properties of other Actor-based
-objects.
+Stackless context switching on the Zend VM.
 --FILE--
 <?php
 
