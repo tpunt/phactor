@@ -18,6 +18,7 @@
 
 #include <main/php.h>
 #include <Zend/zend_exceptions.h>
+#include "ext/standard/php_mt_rand.h"
 
 #include "php_phactor.h"
 #include "src/ph_task.h"
@@ -79,7 +80,7 @@ zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int
         return 0;
     }
 
-    int thread_offset = rand() % PHACTOR_G(actor_system)->thread_count; // @todo modulo bias; don't bother with main thread?
+    int thread_offset = php_mt_rand_range(0, PHACTOR_G(actor_system)->thread_count - 1);
     ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + thread_offset;
 
     pthread_mutex_lock(&thread->tasks.lock);
