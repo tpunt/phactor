@@ -41,29 +41,18 @@ void ph_context_reset(ph_context_t *c)
     c->mc.rsp = c->aligned_stack_space + c->stack_size;
 }
 
-// @todo implement properly
-void ph_executor_globals_save(zend_executor_globals *eg)
+void ph_vm_context_get(zend_executor_globals *eg)
 {
-    // eg->current_execute_data = EG(current_execute_data);
+    // @todo for now, we just save everything. In future, only save what needs
+    // to be saved
     *eg = *TSRMG_BULK_STATIC(executor_globals_id, zend_executor_globals *);
-    // eg->vm_stack_top = EG(vm_stack_top);
-    // eg->vm_stack_end = EG(vm_stack_end);
-    // eg->vm_stack = EG(vm_stack);
-    // eg->fake_scope = EG(fake_scope);
-    //
 }
 
-// @todo implement properly
-void ph_executor_globals_restore(zend_executor_globals *eg)
+void ph_vm_context_set(zend_executor_globals *eg)
 {
-    zend_executor_globals *ceg = TSRMG_BULK_STATIC(executor_globals_id, zend_executor_globals *);
-
-    EG(current_execute_data) = eg->current_execute_data;
-    // EG(vm_stack_top) = eg->vm_stack_top;
-    // EG(vm_stack_end) = eg->vm_stack_end;
-    // EG(vm_stack) = eg->vm_stack;
-    // EG(fake_scope) = eg->fake_scope;
-    //
+    // @todo for now, we only restore vm stack stuff. In future, more things
+    // will need to be restored for this to work properly
+    EG(vm_stack_top) = eg->vm_stack_top;
+    EG(vm_stack_end) = eg->vm_stack_end;
+    EG(vm_stack) = eg->vm_stack;
 }
-
-// free context

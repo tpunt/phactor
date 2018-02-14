@@ -5,7 +5,7 @@ Stackless context switching on the Zend VM.
 
 use phactor\{ActorSystem, Actor, function spawn};
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem(true, 1);
 
 spawn('test', Test::class);
 spawn('test2', Test2::class);

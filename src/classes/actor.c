@@ -182,8 +182,8 @@ static void receive_block(zval *actor_zval, zval *return_value)
     }
 
     pthread_mutex_lock(&actor->lock);
-    ph_executor_globals_save(&actor->eg);
-    ph_executor_globals_restore(&PHACTOR_G(actor_system)->worker_threads[thread_offset].eg);
+    ph_vm_context_get(&actor->eg);
+    ph_vm_context_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].eg);
     actor->state = PH_ACTOR_IDLE;
 
     // @todo possible optimisation: if task queue is empty, just skip the next 7 lines
@@ -249,6 +249,8 @@ void process_message(/*ph_task_t *task*/)
 
     ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
     ph_entry_convert_to_zval(&message_zval, message->message);
+
+    ph_vm_context_set(&for_actor->eg);
 
     call_receive_method(&for_actor->obj, &return_value, &from_actor_zval, &message_zval);
 

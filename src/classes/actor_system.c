@@ -115,7 +115,7 @@ zend_bool send_message(ph_task_t *task)
 
 void resume_actor(ph_actor_t *actor)
 {
-    ph_executor_globals_restore(&actor->eg);
+    ph_vm_context_set(&actor->eg);
     // swap back into receive_block
     ph_context_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context, &actor->actor_context);
 }
@@ -155,6 +155,25 @@ void new_actor(ph_task_t *task)
 
     ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
     ph_hashtable_insert(&named_actor->actors, &new_actor->ref, new_actor);
+
+    // save vm stack - should not be needed (see comment ~10 lines below)
+    // zend_vm_stack vm_stack = EG(vm_stack);
+    // zval *vm_stack_top = EG(vm_stack_top);
+    // zval *vm_stack_end = EG(vm_stack_end);
+
+    // overwrite vm stack
+    zend_vm_stack_init();
+
+    // set new vm stack to actor
+    new_actor->eg.vm_stack = EG(vm_stack);
+    new_actor->eg.vm_stack_top = EG(vm_stack_top);
+    new_actor->eg.vm_stack_end = EG(vm_stack_end);
+
+    // restore previous vm stack - should not be needed, since the vm stack is
+    // always properly set when executing a new context
+    // EG(vm_stack) = vm_stack;
+    // EG(vm_stack_top) = vm_stack_top;
+    // EG(vm_stack_end) = vm_stack_end;
 
     constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
 
@@ -309,8 +328,6 @@ void *worker_function(ph_thread_t *ph_thread)
     pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
     ++PHACTOR_G(actor_system)->prepared_thread_count;
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
-
-    ph_executor_globals_save(&ph_thread->eg);
 
     message_handling_loop();
 

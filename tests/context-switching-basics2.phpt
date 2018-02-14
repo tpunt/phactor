@@ -5,7 +5,7 @@ Stackful context switching on the Zend VM.
 
 use phactor\{ActorSystem, Actor, function spawn};
 
-$as = new ActorSystem(true);
+$as = new ActorSystem(true, 1);
 
 class A extends Actor
 {

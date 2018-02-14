@@ -53,7 +53,7 @@ extern void ph_context_set(ph_context_t *c);
 void ph_context_init(ph_context_t *c, void (*cb)(void));
 void ph_context_reset(ph_context_t *c);
 
-void ph_executor_globals_save(zend_executor_globals *eg);
-void ph_executor_globals_restore(zend_executor_globals *eg);
+void ph_vm_context_get(zend_executor_globals *eg);
+void ph_vm_context_set(zend_executor_globals *eg);
 
 #endif
