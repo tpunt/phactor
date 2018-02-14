@@ -35,9 +35,7 @@ typedef struct _ph_actor_t {
     ph_string_t ref;
     ph_string_t *name;
     ph_queue_t mailbox;
-    zend_execute_data *vm_stack; // vm_context
-    zend_executor_globals eg;
-    ph_context_t actor_context; // c_context
+    ph_context_t context;
     ph_actor_state_t state;
     ph_entry_t *retval; // @todo make singly-linked list?
     int thread_offset;

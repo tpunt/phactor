@@ -115,9 +115,9 @@ zend_bool send_message(ph_task_t *task)
 
 void resume_actor(ph_actor_t *actor)
 {
-    ph_vm_context_set(&actor->eg);
+    ph_vmcontext_set(&actor->context.vmc);
     // swap back into receive_block
-    ph_context_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context, &actor->actor_context);
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc);
 }
 
 void new_actor(ph_task_t *task)
@@ -156,24 +156,8 @@ void new_actor(ph_task_t *task)
     ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
     ph_hashtable_insert(&named_actor->actors, &new_actor->ref, new_actor);
 
-    // save vm stack - should not be needed (see comment ~10 lines below)
-    // zend_vm_stack vm_stack = EG(vm_stack);
-    // zval *vm_stack_top = EG(vm_stack_top);
-    // zval *vm_stack_end = EG(vm_stack_end);
-
-    // overwrite vm stack
     zend_vm_stack_init();
-
-    // set new vm stack to actor
-    new_actor->eg.vm_stack = EG(vm_stack);
-    new_actor->eg.vm_stack_top = EG(vm_stack_top);
-    new_actor->eg.vm_stack_end = EG(vm_stack_end);
-
-    // restore previous vm stack - should not be needed, since the vm stack is
-    // always properly set when executing a new context
-    // EG(vm_stack) = vm_stack;
-    // EG(vm_stack_top) = vm_stack_top;
-    // EG(vm_stack_end) = vm_stack_end;
+    ph_vmcontext_get(&new_actor->context.vmc);
 
     constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
 
@@ -239,7 +223,7 @@ static void handle_actor_next_action(ph_actor_t *actor)
         // its state would currently be idle). Its state now needs
         // to be updated (to new), and if it has any messages in its
         // mailbox, then it needs to be rescheduled.
-        ph_context_reset(&actor->actor_context);
+        ph_mcontext_reset(&actor->context.mc);
 
         if (ph_queue_size(&actor->mailbox)) {
             ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
@@ -287,7 +271,7 @@ void message_handling_loop(void)
                 ph_actor_t *for_actor = current_task->u.pmt.for_actor;
 
                 // swap into process_message
-                ph_context_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context, &for_actor->actor_context);
+                ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc);
                 handle_actor_next_action(for_actor);
                 break;
             case PH_RESUME_ACTOR_TASK:
@@ -328,6 +312,8 @@ void *worker_function(ph_thread_t *ph_thread)
     pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
     ++PHACTOR_G(actor_system)->prepared_thread_count;
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
+
+    ph_vmcontext_get(&ph_thread->context.vmc);
 
     message_handling_loop();
 

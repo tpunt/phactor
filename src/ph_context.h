@@ -25,35 +25,43 @@ typedef struct _ph_mcontext_t {
     void *rbx; // 0
     void *rbp; // 8
     void *rsp; // 16
-    void *r8;  // 24
-    void *r9;  // 32
+    void *r8; // 24
+    void *r9; // 32
     void *r10; // 40
     void *r11; // 48
     void *r12; // 56
     void *r13; // 64
     void *r14; // 72
     void *r15; // 80
+    void *stack_space; // 88
+    int stack_size; // 96
+    int started; // 100
+    void (*cb)(void); // 104
+    void *aligned_stack_space; // 112
 } ph_mcontext_t;
 
+typedef struct _ph_vmcontext_t {
+    zend_vm_stack vm_stack;
+    zval *vm_stack_top;
+    zval *vm_stack_end;
+} ph_vmcontext_t;
+
 typedef struct _ph_context_t {
-    void *stack_space;
-    int stack_size;
-    int started;
-    void (*cb)(void);
     ph_mcontext_t mc;
-    void *aligned_stack_space;
+    ph_vmcontext_t vmc;
 } ph_context_t;
 
 #define STACK_SIZE 1 << 15
 #define STACK_ALIGNMENT 16 // Ensure 16 byte stack alignment (for OS X)
 
-extern void ph_context_get(ph_context_t *c);
-extern void ph_context_swap(ph_context_t *from, ph_context_t *to);
-extern void ph_context_set(ph_context_t *c);
-void ph_context_init(ph_context_t *c, void (*cb)(void));
-void ph_context_reset(ph_context_t *c);
+extern void ph_mcontext_get(ph_mcontext_t *mc);
+extern void ph_mcontext_set(ph_mcontext_t *mc);
+extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
+void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void));
+void ph_mcontext_reset(ph_mcontext_t *mc);
 
-void ph_vm_context_get(zend_executor_globals *eg);
-void ph_vm_context_set(zend_executor_globals *eg);
+void ph_vmcontext_get(ph_vmcontext_t *vmc);
+void ph_vmcontext_set(ph_vmcontext_t *vmc);
+void ph_vmcontext_swap(ph_vmcontext_t *from_vmc, ph_vmcontext_t *to_vmc);
 
 #endif

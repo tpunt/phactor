@@ -20,39 +20,47 @@
 #include <stdlib.h>
 #include <string.h>
 
-void ph_context_init(ph_context_t *c, void (*cb)(void))
+void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void))
 {
-    c->stack_size = STACK_SIZE;
-    c->stack_space = calloc(1, c->stack_size + STACK_ALIGNMENT - 1);
-    c->aligned_stack_space = (void *)((uintptr_t)c->stack_space + (STACK_ALIGNMENT - 1) & ~(STACK_ALIGNMENT - 1));
-    c->cb = cb;
+    mc->stack_size = STACK_SIZE;
+    mc->stack_space = calloc(1, mc->stack_size + STACK_ALIGNMENT - 1);
+    mc->aligned_stack_space = (void *)((uintptr_t)mc->stack_space + (STACK_ALIGNMENT - 1) & ~(STACK_ALIGNMENT - 1));
+    mc->cb = cb;
 
-    ph_context_reset(c);
+    ph_mcontext_reset(mc);
 }
 
-void ph_context_reset(ph_context_t *c)
+void ph_mcontext_reset(ph_mcontext_t *mc)
 {
-    memset(&c->mc, 0, sizeof(ph_mcontext_t));
+    memset(mc, 0, sizeof(void *) * 11);
 
-    c->started = 0;
+    mc->started = 0;
 
     // assumes the stack always grows downwards
-    c->mc.rbp = c->aligned_stack_space + c->stack_size;
-    c->mc.rsp = c->aligned_stack_space + c->stack_size;
+    mc->rbp = mc->aligned_stack_space + mc->stack_size;
+    mc->rsp = mc->aligned_stack_space + mc->stack_size;
 }
 
-void ph_vm_context_get(zend_executor_globals *eg)
+void ph_vmcontext_get(ph_vmcontext_t *vmc)
 {
-    // @todo for now, we just save everything. In future, only save what needs
-    // to be saved
-    *eg = *TSRMG_BULK_STATIC(executor_globals_id, zend_executor_globals *);
+    // @todo for now, we only save vm stack stuff. In future, more things will
+    // need to be saved for this to work properly
+    vmc->vm_stack_top = EG(vm_stack_top);
+    vmc->vm_stack_end = EG(vm_stack_end);
+    vmc->vm_stack = EG(vm_stack);
 }
 
-void ph_vm_context_set(zend_executor_globals *eg)
+void ph_vmcontext_set(ph_vmcontext_t *vmc)
 {
     // @todo for now, we only restore vm stack stuff. In future, more things
     // will need to be restored for this to work properly
-    EG(vm_stack_top) = eg->vm_stack_top;
-    EG(vm_stack_end) = eg->vm_stack_end;
-    EG(vm_stack) = eg->vm_stack;
+    EG(vm_stack_top) = vmc->vm_stack_top;
+    EG(vm_stack_end) = vmc->vm_stack_end;
+    EG(vm_stack) = vmc->vm_stack;
+}
+
+void ph_vmcontext_swap(ph_vmcontext_t *from_vmc, ph_vmcontext_t *to_vmc)
+{
+    ph_vmcontext_get(from_vmc);
+    ph_vmcontext_set(to_vmc);
 }

@@ -34,12 +34,11 @@
 typedef struct _ph_thread_t {
     pthread_t pthread; // must be first member
     zend_ulong id; // local storage ID used to fetch local storage data
-    zend_executor_globals eg;
     ph_queue_t tasks;
     pthread_mutex_t ph_task_mutex;
     int offset;
     void*** ls; // pointer to local storage in TSRM
-    ph_context_t thread_context;
+    ph_context_t context;
 } ph_thread_t;
 
 typedef struct _ph_actor_system_t {

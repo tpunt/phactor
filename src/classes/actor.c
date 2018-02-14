@@ -182,8 +182,7 @@ static void receive_block(zval *actor_zval, zval *return_value)
     }
 
     pthread_mutex_lock(&actor->lock);
-    ph_vm_context_get(&actor->eg);
-    ph_vm_context_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].eg);
+    ph_vmcontext_swap(&actor->context.vmc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.vmc);
     actor->state = PH_ACTOR_IDLE;
 
     // @todo possible optimisation: if task queue is empty, just skip the next 7 lines
@@ -197,7 +196,7 @@ static void receive_block(zval *actor_zval, zval *return_value)
     }
     pthread_mutex_unlock(&actor->lock);
 
-    ph_context_swap(&actor->actor_context, &PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context);
+    ph_mcontext_swap(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 
     pthread_mutex_lock(&actor->lock);
     ph_message_t *message = ph_queue_pop(&actor->mailbox);
@@ -250,7 +249,7 @@ void process_message(/*ph_task_t *task*/)
     ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
     ph_entry_convert_to_zval(&message_zval, message->message);
 
-    ph_vm_context_set(&for_actor->eg);
+    ph_vmcontext_set(&for_actor->context.vmc);
 
     call_receive_method(&for_actor->obj, &return_value, &from_actor_zval, &message_zval);
 
@@ -260,7 +259,7 @@ void process_message(/*ph_task_t *task*/)
     zval_ptr_dtor(&from_actor_zval);
     zval_ptr_dtor(&return_value);
 
-    ph_context_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].thread_context);
+    ph_mcontext_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 }
 
 zend_object* phactor_actor_ctor(zend_class_entry *entry)
@@ -288,7 +287,7 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     PH_STRV(new_actor->ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
     ph_actor_set_ref(&new_actor->ref);
     ph_queue_init(&new_actor->mailbox, ph_msg_free);
-    ph_context_init(&new_actor->actor_context, process_message);
+    ph_mcontext_init(&new_actor->context.mc, process_message);
     pthread_mutex_init(&new_actor->lock, NULL);
 
     return &new_actor->obj;
