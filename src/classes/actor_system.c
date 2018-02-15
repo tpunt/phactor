@@ -48,6 +48,8 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
 {
     ph_message_t *message = ph_msg_create(&task->u.smt.from_actor_ref, task->u.smt.message);
 
+    assert((long)ph_actor_retrieve_from_ref(&task->u.smt.from_actor_ref) & -2);
+
     pthread_mutex_lock(&to_actor->lock);
     ph_queue_push(&to_actor->mailbox, message);
 
