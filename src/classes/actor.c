@@ -153,8 +153,7 @@ void ph_actor_free(void *actor_void)
     ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
     ph_vmcontext_t vmc;
 
-    ph_vmcontext_get(&vmc);
-    ph_vmcontext_set(&actor->context.vmc);
+    ph_vmcontext_swap(&vmc, &actor->context.vmc);
     zend_vm_stack_destroy();
     ph_vmcontext_set(&vmc);
 
@@ -240,9 +239,9 @@ static void call_receive_method(zend_object *object, zval *from_actor, zval *mes
     zval_ptr_dtor(&retval);
 }
 
-void process_message(/*ph_task_t *task*/)
+void process_message_handler(/*ph_task_t *task*/)
 {
-    ph_task_t *task = currently_processing_task;
+    ph_task_t *task = currently_processing_task; // from tls
     ph_actor_t *for_actor = task->u.pmt.for_actor;
     zval from_actor_zval, message_zval;
 
@@ -255,14 +254,11 @@ void process_message(/*ph_task_t *task*/)
     ZVAL_STR(&from_actor_zval, zend_string_init(PH_STRV(message->from_actor_ref), PH_STRL(message->from_actor_ref), 0));
     ph_entry_convert_to_zval(&message_zval, message->message);
 
-    ph_vmcontext_set(&for_actor->context.vmc);
-
     call_receive_method(&for_actor->obj, &from_actor_zval, &message_zval);
 
+    zval_ptr_dtor(&from_actor_zval);
     zval_ptr_dtor(&message_zval);
     ph_msg_free(message);
-
-    zval_ptr_dtor(&from_actor_zval);
 
     ph_mcontext_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 }
@@ -292,7 +288,7 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     PH_STRV(new_actor->ref) = malloc(sizeof(char) * ACTOR_REF_LEN);
     ph_actor_set_ref(&new_actor->ref);
     ph_queue_init(&new_actor->mailbox, ph_msg_free);
-    ph_mcontext_init(&new_actor->context.mc, process_message);
+    ph_mcontext_init(&new_actor->context.mc, process_message_handler);
     pthread_mutex_init(&new_actor->lock, NULL);
 
     return &new_actor->obj;

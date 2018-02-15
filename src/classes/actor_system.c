@@ -124,6 +124,13 @@ zend_bool send_message(ph_task_t *task)
     return sent;
 }
 
+void process_message(ph_actor_t *for_actor)
+{
+    ph_vmcontext_set(&for_actor->context.vmc);
+    // swap into process_message_handler
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc);
+}
+
 void resume_actor(ph_actor_t *actor)
 {
     ph_vmcontext_set(&actor->context.vmc);
@@ -281,8 +288,7 @@ void message_handling_loop(void)
                 currently_processing_task = current_task; // tls for the currently processing actor
                 ph_actor_t *for_actor = current_task->u.pmt.for_actor;
 
-                // swap into process_message
-                ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc);
+                process_message(for_actor);
                 handle_actor_next_action(for_actor);
                 break;
             case PH_RESUME_ACTOR_TASK:
