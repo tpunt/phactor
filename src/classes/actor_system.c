@@ -417,8 +417,6 @@ void scheduler_blocking()
         return;
     }
 
-    PHACTOR_G(actor_system)->initialised = 0;
-
     pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
     if (!PHACTOR_G(actor_system)->shutdown) {
         PHACTOR_G(actor_system)->shutdown = !PHACTOR_G(actor_system)->daemonised;
@@ -437,9 +435,7 @@ void scheduler_blocking()
         pthread_join(thread->pthread, NULL);
     }
 
-    pthread_mutex_destroy(&PHACTOR_G(actor_system)->worker_threads[PHACTOR_G(actor_system)->thread_count].ph_task_mutex);
-
-    free(PHACTOR_G(actor_system)->worker_threads);
+    PHACTOR_G(actor_system)->initialised = 0;
 }
 
 static zend_object* phactor_actor_system_ctor(zend_class_entry *entry)
@@ -465,16 +461,10 @@ static zend_object* phactor_actor_system_ctor(zend_class_entry *entry)
 void php_actor_system_dtor_object(zend_object *obj)
 {
     zend_object_std_dtor(obj);
-
-    // ensure threads and other things are freed
 }
 
 void php_actor_system_free_object(zend_object *obj)
 {
-    if (!PHACTOR_G(actor_system)->initialised) {
-        return;
-    }
-
     ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, ph_actor_free, ph_actor_t *, thread_offset, thread_offset);
 
     for (int i = 0; i <= PHACTOR_G(actor_system)->thread_count; ++i) {
@@ -482,7 +472,9 @@ void php_actor_system_free_object(zend_object *obj)
     }
 
     pthread_mutex_destroy(&PHACTOR_G(actor_system)->lock);
+    pthread_mutex_destroy(&PHACTOR_G(actor_system)->worker_threads[PHACTOR_G(actor_system)->thread_count].ph_task_mutex);
 
+    free(PHACTOR_G(actor_system)->worker_threads);
     free(PHACTOR_G(actor_system)->actor_removals);
     free(PHACTOR_G(actor_system)->actors.values); // @todo should use ph_hashtable_destroy (should be empty)
     free(PHACTOR_G(actor_system)->named_actors.values); // @todo should use ph_hashtable_destroy (should be empty)
