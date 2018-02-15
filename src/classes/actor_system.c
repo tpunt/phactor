@@ -192,7 +192,7 @@ void new_actor(ph_task_t *task)
         }
 
         zval_dtor(&fci.function_name);
-        // dtor on retval?
+        zval_ptr_dtor(&retval);
     }
 
     pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));

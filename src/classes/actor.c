@@ -212,19 +212,19 @@ static void receive_block(zval *actor_zval, zval *return_value)
     ph_msg_free(message);
 }
 
-static void call_receive_method(zend_object *object, zval *retval_ptr, zval *from_actor, zval *message)
+static void call_receive_method(zend_object *object, zval *from_actor, zval *message)
 {
     int result;
     zend_fcall_info fci;
     zend_function *receive_function;
-    zval params[2];
+    zval params[2], retval;
 
     ZVAL_COPY_VALUE(&params[0], from_actor);
     ZVAL_COPY_VALUE(&params[1], message);
 
     fci.size = sizeof(fci);
     fci.object = object;
-    fci.retval = retval_ptr;
+    fci.retval = &retval;
     fci.param_count = 2;
     fci.params = params;
     fci.no_separation = 1;
@@ -237,13 +237,14 @@ static void call_receive_method(zend_object *object, zval *retval_ptr, zval *fro
     }
 
     zval_dtor(&fci.function_name);
+    zval_ptr_dtor(&retval);
 }
 
 void process_message(/*ph_task_t *task*/)
 {
     ph_task_t *task = currently_processing_task;
     ph_actor_t *for_actor = task->u.pmt.for_actor;
-    zval return_value, from_actor_zval, message_zval;
+    zval from_actor_zval, message_zval;
 
     pthread_mutex_lock(&for_actor->lock);
     ph_message_t *message = ph_queue_pop(&for_actor->mailbox);
@@ -256,13 +257,12 @@ void process_message(/*ph_task_t *task*/)
 
     ph_vmcontext_set(&for_actor->context.vmc);
 
-    call_receive_method(&for_actor->obj, &return_value, &from_actor_zval, &message_zval);
+    call_receive_method(&for_actor->obj, &from_actor_zval, &message_zval);
 
     zval_ptr_dtor(&message_zval);
     ph_msg_free(message);
 
     zval_ptr_dtor(&from_actor_zval);
-    zval_ptr_dtor(&return_value);
 
     ph_mcontext_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 }
