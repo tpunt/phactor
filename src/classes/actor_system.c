@@ -69,6 +69,15 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
 
 void send_remote_message(ph_task_t *task)
 {
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
+    if (PHACTOR_G(actor_system)->shutdown) {
+        // The actor system was shut down and the actor being sent to was freed.
+        // This will need to be changed in future.
+        pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
+        return;
+    }
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
+
     // @todo debugging purposes only - no implementation yet
     printf("Tried to send a message to a non-existent (or remote) actor\n");
     assert(0);
