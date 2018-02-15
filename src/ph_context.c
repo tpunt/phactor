@@ -41,6 +41,11 @@ void ph_mcontext_reset(ph_mcontext_t *mc)
     mc->rsp = mc->aligned_stack_space + mc->stack_size;
 }
 
+void ph_mcontext_free(ph_mcontext_t *mc)
+{
+    free(mc->stack_space);
+}
+
 void ph_vmcontext_get(ph_vmcontext_t *vmc)
 {
     // @todo for now, we only save vm stack stuff. In future, more things will

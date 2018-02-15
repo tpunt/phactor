@@ -331,6 +331,8 @@ void *worker_function(ph_thread_t *ph_thread)
 
     ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, ph_actor_free, ph_actor_t *, thread_offset, thread_offset);
 
+    ph_vmcontext_set(&ph_thread->context.vmc);
+
     php_request_shutdown(NULL);
 
     ts_free_thread();

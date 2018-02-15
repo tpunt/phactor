@@ -59,6 +59,7 @@ extern void ph_mcontext_set(ph_mcontext_t *mc);
 extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
 void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void));
 void ph_mcontext_reset(ph_mcontext_t *mc);
+void ph_mcontext_free(ph_mcontext_t *mc);
 
 void ph_vmcontext_get(ph_vmcontext_t *vmc);
 void ph_vmcontext_set(ph_vmcontext_t *vmc);

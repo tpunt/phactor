@@ -150,12 +150,17 @@ static void ph_actor_remove_from_named_actors(void *actor_void)
 void ph_actor_free(void *actor_void)
 {
     ph_actor_t *actor = (ph_actor_t *) actor_void;
-
-    // GC_REFCOUNT(&actor->obj) = 0; // @todo needed?
-
-    ph_actor_dtor_object(&actor->obj);
-
     ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
+    ph_vmcontext_t vmc;
+
+    ph_vmcontext_get(&vmc);
+    ph_vmcontext_set(&actor->context.vmc);
+    zend_vm_stack_destroy();
+    ph_vmcontext_set(&vmc);
+
+    ph_mcontext_free(&actor->context.mc);
+
+    ph_actor_dtor_object(&actor->obj); // @todo set GC_REFCOUNT(&actor->obj) = 0; ?
 
     ph_hashtable_delete(&named_actor->actors, &actor->ref, ph_actor_remove_from_named_actors);
 
