@@ -177,6 +177,12 @@ void new_actor(ph_task_t *task)
     zend_vm_stack_init();
     ph_vmcontext_get(&new_actor->context.vmc);
 
+    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
+    if (named_actor->state == PH_NAMED_ACTOR_CONSTRUCTING) {
+        named_actor->state = PH_NAMED_ACTOR_ACTIVE;
+    }
+    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
+
     constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
 
     if (constructor) {
@@ -210,12 +216,6 @@ void new_actor(ph_task_t *task)
         zval_dtor(&fci.function_name);
         zval_ptr_dtor(&retval);
     }
-
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
-    if (named_actor->state == PH_NAMED_ACTOR_CONSTRUCTING) {
-        named_actor->state = PH_NAMED_ACTOR_ACTIVE;
-    }
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     zend_string_free(class);
 }
