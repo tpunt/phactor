@@ -128,14 +128,14 @@ void process_message(ph_actor_t *for_actor)
 {
     ph_vmcontext_set(&for_actor->context.vmc);
     // swap into process_message_handler
-    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc);
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc, 0);
 }
 
 void resume_actor(ph_actor_t *actor)
 {
     ph_vmcontext_set(&actor->context.vmc);
     // swap back into receive_block
-    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc);
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc, 2);
 }
 
 void new_actor(ph_task_t *task)

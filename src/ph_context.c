@@ -22,9 +22,14 @@
 
 void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void))
 {
-    mc->stack_size = STACK_SIZE;
+#ifdef PH_FIXED_STACK_SIZE
+    mc->stack_size = PH_FIXED_STACK_SIZE;
     mc->stack_space = calloc(1, mc->stack_size + STACK_ALIGNMENT - 1);
     mc->aligned_stack_space = (void *)((uintptr_t)mc->stack_space + (STACK_ALIGNMENT - 1) & ~(STACK_ALIGNMENT - 1));
+#else
+    mc->stack_size = 0;
+    mc->stack_space = NULL;
+#endif
     mc->cb = cb;
 
     ph_mcontext_reset(mc);
@@ -34,16 +39,24 @@ void ph_mcontext_reset(ph_mcontext_t *mc)
 {
     memset(mc, 0, sizeof(void *) * 11);
 
+#ifdef PH_FIXED_STACK_SIZE
     mc->started = 0;
 
     // assumes the stack always grows downwards
     mc->rbp = mc->aligned_stack_space + mc->stack_size;
     mc->rsp = mc->aligned_stack_space + mc->stack_size;
+#endif
 }
 
 void ph_mcontext_free(ph_mcontext_t *mc)
 {
+#ifdef PH_FIXED_STACK_SIZE
     free(mc->stack_space);
+#else
+    if (mc->stack_space) {
+        free(mc->stack_space);
+    }
+#endif
 }
 
 void ph_vmcontext_get(ph_vmcontext_t *vmc)

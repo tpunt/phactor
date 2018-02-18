@@ -34,10 +34,12 @@ typedef struct _ph_mcontext_t {
     void *r14; // 72
     void *r15; // 80
     void *stack_space; // 88
-    int stack_size; // 96
-    int started; // 100
-    void (*cb)(void); // 104
+    void (*cb)(void); // 96
+    int stack_size; // 104
+#ifdef PH_FIXED_STACK_SIZE
+    int started; // 108
     void *aligned_stack_space; // 112
+#endif
 } ph_mcontext_t;
 
 typedef struct _ph_vmcontext_t {
@@ -51,12 +53,13 @@ typedef struct _ph_context_t {
     ph_vmcontext_t vmc;
 } ph_context_t;
 
-#define STACK_SIZE 1 << 15
-#define STACK_ALIGNMENT 16 // Ensure 16 byte stack alignment (for OS X)
+#ifdef PH_FIXED_STACK_SIZE
+# define STACK_ALIGNMENT 16 // Ensure 16 byte stack alignment (for OS X)
 
 extern void ph_mcontext_get(ph_mcontext_t *mc);
 extern void ph_mcontext_set(ph_mcontext_t *mc);
-extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
+#endif
+extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc, int action);
 void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void));
 void ph_mcontext_reset(ph_mcontext_t *mc);
 void ph_mcontext_free(ph_mcontext_t *mc);
