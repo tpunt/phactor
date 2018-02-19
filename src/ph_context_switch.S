@@ -127,30 +127,26 @@ FN(ph_mcontext_swap)
     subq %rsp, %rax
     movq %rax, 104(%rdi)
 
-    pushq %rdx
     pushq %rdi
     pushq %rsi
-    pushq $0                 ## keeps stack aligned to 16 bytes
 
     movq 104(%rdi), %rsi
     movq 88(%rdi), %rdi
     callq CALL(realloc)
-    movq 8(%rsp), %rsi
-    movq 16(%rsp), %rdi
+    movq 0(%rsp), %rsi
+    movq 8(%rsp), %rdi
     movq %rax, 88(%rdi)
 
     movq %rsp, %rsi
-    addq $32, %rsi           ## skip past the 4 pushes we made above
+    addq $16, %rsi           ## skip past the 2 pushes we made above
     movq 104(%rdi), %rdx
     movq 88(%rdi), %rdi
     callq CALL(memcpy)
 
-    popq %rax
     popq %rsi
     popq %rdi
-    popq %rdx
-L3:
 
+L3:
     ## save the context (into %rdi)
     movq %rbx, 0(%rdi)
     movq %rbp, 8(%rdi)

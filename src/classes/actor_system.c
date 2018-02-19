@@ -144,7 +144,7 @@ void resume_actor(ph_actor_t *actor)
     ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc);
 #else
     ph_mcontext_resume(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc);
-    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc, 2);
+    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc, 2);
 #endif
 }
 

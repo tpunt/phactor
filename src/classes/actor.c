@@ -204,7 +204,7 @@ static void receive_block(zval *actor_zval, zval *return_value)
     ph_mcontext_swap(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 #else
     ph_mcontext_interrupt(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
-    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc, 1);
+    // ph_mcontext_swap(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, 1);
 #endif
 
     pthread_mutex_lock(&actor->lock);
