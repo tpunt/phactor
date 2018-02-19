@@ -4,12 +4,16 @@
     .align 4, 0x90; \
     _##name##: \
     .cfi_startproc
+
+# define CALL(fn) _##fn
 #else
 # define FN(name) \
     .globl name; \
     .type name, @function; \
     name: \
     .cfi_startproc
+
+# define CALL(fn) fn##@PLT
 #endif
 
 #ifdef PH_FIXED_STACK_SIZE
@@ -130,7 +134,7 @@ FN(ph_mcontext_swap)
 
     movq 104(%rdi), %rsi
     movq 88(%rdi), %rdi
-    callq _realloc
+    callq CALL(realloc)
     movq 8(%rsp), %rsi
     movq 16(%rsp), %rdi
     movq %rax, 88(%rdi)
@@ -139,7 +143,7 @@ FN(ph_mcontext_swap)
     addq $32, %rsi           ## skip past the 4 pushes we made above
     movq 104(%rdi), %rdx
     movq 88(%rdi), %rdi
-    callq _memcpy
+    callq CALL(memcpy)
 
     popq %rax
     popq %rsi
@@ -185,7 +189,7 @@ L3:
 
     movq 104(%rsi), %rdx
     movq 88(%rsi), %rsi
-    callq _memcpy
+    callq CALL(memcpy)
 
     popq %rax
     popq %rsi
@@ -262,7 +266,7 @@ FN(ph_mcontext_resume)
     movq %rsi, %rbx
     movq 104(%rsi), %rdx
     movq 88(%rsi), %rsi
-    callq _memcpy
+    callq CALL(memcpy)
     movq %rbx, %rsi
 
     movq 0(%rsi), %rbx
@@ -294,7 +298,7 @@ FN(ph_mcontext_interrupt)
 
     movq 104(%rdi), %rsi
     movq 88(%rdi), %rdi
-    callq _realloc
+    callq CALL(realloc)
     movq 0(%rsp), %rsi
     movq 8(%rsp), %rdi
     movq %rax, 88(%rdi)
@@ -303,7 +307,7 @@ FN(ph_mcontext_interrupt)
     addq $16, %rsi           ## skip past 2 pushes onto stack
     movq 104(%rdi), %rdx
     movq 88(%rdi), %rdi
-    callq _memcpy
+    callq CALL(memcpy)
 
     popq %rsi
     popq %rdi
