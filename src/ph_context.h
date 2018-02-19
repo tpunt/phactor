@@ -58,8 +58,13 @@ typedef struct _ph_context_t {
 
 extern void ph_mcontext_get(ph_mcontext_t *mc);
 extern void ph_mcontext_set(ph_mcontext_t *mc);
+extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
+#else
+// extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc, int action);
+extern void ph_mcontext_start(ph_mcontext_t *mc, void (*cb)(void));
+extern void ph_mcontext_resume(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
+extern void ph_mcontext_interrupt(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
 #endif
-extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc, int action);
 void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void));
 void ph_mcontext_reset(ph_mcontext_t *mc);
 void ph_mcontext_free(ph_mcontext_t *mc);

@@ -200,7 +200,12 @@ static void receive_block(zval *actor_zval, zval *return_value)
     }
     pthread_mutex_unlock(&actor->lock);
 
-    ph_mcontext_swap(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, 1);
+#ifdef PH_FIXED_STACK_SIZE
+    ph_mcontext_swap(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+#else
+    ph_mcontext_interrupt(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc, 1);
+#endif
 
     pthread_mutex_lock(&actor->lock);
     ph_message_t *message = ph_queue_pop(&actor->mailbox);

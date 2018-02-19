@@ -99,6 +99,7 @@ L2:
 
 #else
 
+#if 0
 FN(ph_mcontext_swap)
     pushq %rbp
     movq %rsp, %rbp
@@ -208,6 +209,131 @@ L4:
     callq *96(%rsi)
 
 L2:
+    popq %rbp
+    ret
+    .cfi_endproc
+
+#endif
+
+FN(ph_mcontext_start)
+    pushq %rbp
+    movq %rsp, %rbp
+
+    ## save the current context
+    movq %rbx, 0(%rdi)
+    movq %rbp, 8(%rdi)
+    movq %rsp, 16(%rdi)
+    movq %r8, 24(%rdi)
+    movq %r9, 32(%rdi)
+    movq %r10, 40(%rdi)
+    movq %r11, 48(%rdi)
+    movq %r12, 56(%rdi)
+    movq %r13, 64(%rdi)
+    movq %r14, 72(%rdi)
+    movq %r15, 80(%rdi)
+
+    callq *%rsi
+
+    popq %rbp
+    ret
+    .cfi_endproc
+
+FN(ph_mcontext_resume)
+    pushq %rbp
+    movq %rsp, %rbp
+
+    ## save the current context
+    movq %rbx, 0(%rdi)
+    movq %rbp, 8(%rdi)
+    movq %rsp, 16(%rdi)
+    movq %r8, 24(%rdi)
+    movq %r9, 32(%rdi)
+    movq %r10, 40(%rdi)
+    movq %r11, 48(%rdi)
+    movq %r12, 56(%rdi)
+    movq %r13, 64(%rdi)
+    movq %r14, 72(%rdi)
+    movq %r15, 80(%rdi)
+
+    ## restore the old context
+    subq 104(%rsi), %rsp
+
+    movq %rsp, %rdi
+    movq %rsi, %rbx
+    movq 104(%rsi), %rdx
+    movq 88(%rsi), %rsi
+    callq _memcpy
+    movq %rbx, %rsi
+
+    movq 0(%rsi), %rbx
+    movq 8(%rsi), %rbp
+    movq 16(%rsi), %rsp
+    movq 24(%rsi), %r8
+    movq 32(%rsi), %r9
+    movq 40(%rsi), %r10
+    movq 48(%rsi), %r11
+    movq 56(%rsi), %r12
+    movq 64(%rsi), %r13
+    movq 72(%rsi), %r14
+    movq 80(%rsi), %r15
+
+    popq %rbp
+    ret
+    .cfi_endproc
+
+FN(ph_mcontext_interrupt)
+    pushq %rbp
+    movq %rsp, %rbp
+
+    movq 16(%rsi), %rax      ## calculate stack size (old_rsp - current_rsp)
+    subq %rsp, %rax
+    movq %rax, 104(%rdi)
+
+    pushq %rdi
+    pushq %rsi
+
+    movq 104(%rdi), %rsi
+    movq 88(%rdi), %rdi
+    callq _realloc
+    movq 0(%rsp), %rsi
+    movq 8(%rsp), %rdi
+    movq %rax, 88(%rdi)
+
+    movq %rsp, %rsi
+    addq $16, %rsi           ## skip past 2 pushes onto stack
+    movq 104(%rdi), %rdx
+    movq 88(%rdi), %rdi
+    callq _memcpy
+
+    popq %rsi
+    popq %rdi
+
+    ## save the current context
+    movq %rbx, 0(%rdi)
+    movq %rbp, 8(%rdi)
+    movq %rsp, 16(%rdi)
+    movq %r8, 24(%rdi)
+    movq %r9, 32(%rdi)
+    movq %r10, 40(%rdi)
+    movq %r11, 48(%rdi)
+    movq %r12, 56(%rdi)
+    movq %r13, 64(%rdi)
+    movq %r14, 72(%rdi)
+    movq %r15, 80(%rdi)
+
+    ## restore the old context
+    movq 0(%rsi), %rbx
+    movq 8(%rsi), %rbp
+    movq 16(%rsi), %rsp
+    movq 24(%rsi), %r8
+    movq 32(%rsi), %r9
+    movq 40(%rsi), %r10
+    movq 48(%rsi), %r11
+    movq 56(%rsi), %r12
+    movq 64(%rsi), %r13
+    movq 72(%rsi), %r14
+    movq 80(%rsi), %r15
+
     popq %rbp
     ret
     .cfi_endproc
