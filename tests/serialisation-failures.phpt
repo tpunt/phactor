@@ -1,6 +1,9 @@
 --TEST--
-Ensure the serialisation points (ctor arguments when creating a new actor and
-message sending from an actor) handle failure correctly.
+Ensure the serialisation points handle failure correctly.
+--DESCRIPTION--
+The serialisation points are:
+ - ctor arguments when creating a new actor, and
+ - message sending from an actor
 --FILE--
 <?php
 
