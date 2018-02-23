@@ -48,29 +48,6 @@ typedef struct _ph_hashtable_t {
     pthread_mutex_t lock;
 } ph_hashtable_t;
 
-#define ph_hashtable_delete_by_value(ht, dtor, type, field, target) \
-    do { \
-        pthread_mutex_lock(&(ht)->lock); \
-        for (int i = 0; i < (ht)->size; ++i) { \
-            ph_bucket_t *b = (ht)->values + i; \
-\
-            if (b->hash > 0) { \
-                type actor = b->value; \
-\
-                if (actor->field == (target)) { \
-                    (dtor)(b->value); \
-\
-                    if ((ht)->flags & FREE_KEYS) { \
-                        ph_str_free(b->key); \
-                    } \
-\
-                    b->hash = -1; \
-                } \
-            } \
-        } \
-        pthread_mutex_unlock(&(ht)->lock); \
-    } while (0)
-
 void ph_hashtable_init(ph_hashtable_t *ht, int size);
 void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_insert_ind(ph_hashtable_t *ht, int hash, void *value);
@@ -84,5 +61,6 @@ void ph_hashtable_update_ind(ph_hashtable_t *ht, int hash, void *value);
 void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *));
 void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht);
 void *ph_hashtable_random_value(ph_hashtable_t *ht);
+void ph_hashtable_delete_n(ph_hashtable_t *ht, int n, void (*dtor_value)(void *));
 
 #endif

@@ -59,6 +59,10 @@ ph_actor_t *ph_actor_retrieve_from_name(ph_string_t *actor_name);
 ph_actor_t *ph_actor_retrieve_from_ref(ph_string_t *actor_ref);
 void ph_actor_ce_init(void);
 void ph_actor_free(void *actor_void);
+void ph_actor_free_dummy(void *actor_void);
 void ph_actor_remove(void *target_actor_void);
+zend_long ph_named_actor_removal(zend_string *name, zend_long count);
+void ph_named_actor_remove(void *named_actor_void);
+void ph_actor_mark_for_removal(void *actor_void);
 
 #endif

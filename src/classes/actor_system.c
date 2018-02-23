@@ -39,7 +39,7 @@ __thread ph_thread_t *thread;
 __thread int thread_offset;
 ph_thread_t main_thread;
 
-pthread_mutex_t phactor_named_actors_mutex;
+pthread_mutex_t ph_named_actors_mutex;
 
 zend_object_handlers phactor_actor_system_handlers;
 zend_class_entry *ActorSystem_ce;
@@ -151,11 +151,6 @@ void resume_actor(ph_actor_t *actor)
 void new_actor(ph_task_t *task)
 {
     ph_string_t class_name = task->u.nat.class_name;
-    ph_string_t *named_actor_key = task->u.nat.named_actor_key;
-    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, named_actor_key);
-
-    assert(named_actor);
-
     zend_string *class = zend_string_init(PH_STRV(class_name), PH_STRL(class_name), 0);
     zend_class_entry *ce = zend_fetch_class_by_name(class, NULL, ZEND_FETCH_CLASS_DEFAULT | ZEND_FETCH_CLASS_EXCEPTION);
     ph_entry_t *args = task->u.nat.args;
@@ -178,20 +173,41 @@ void new_actor(ph_task_t *task)
     PHACTOR_ZG(allowed_to_construct_object) = 0;
 
     ph_actor_t *new_actor = (ph_actor_t *)((char *)Z_OBJ(zobj) - Z_OBJ(zobj)->handlers->offset);
+    ph_string_t *named_actor_key = task->u.nat.named_actor_key;
+
+    pthread_mutex_lock(&PHACTOR_G(ph_named_actors_mutex));
+    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, named_actor_key);
+
+    // @todo what are the technical reasons for not doing this in phactor_actor_ctor?
+    zend_vm_stack_init();
+    ph_vmcontext_get(&new_actor->context.vmc);
+
+    if (!named_actor || named_actor->actors.used == named_actor->perceived_used) {
+        // The first condition can occur if an actor is spawn()ed and then
+        // remove()d before the new thread has a chance to create it.
+        //
+        // The second condition can occur if multiple actors are spawn()ed, and
+        // then multiple actors (but not all of them) are remove()d before
+        // they have all been created. This leaves more new actor tasks that
+        // have still yet to be created than the perceived_used count of a
+        // named actor. So we have to discard them.
+        //
+        // This branch should be rarely hit, so optimising it is not a concern
+        ph_actor_free(new_actor);
+        zend_string_free(class);
+        pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
+        return;
+    }
 
     new_actor->name = named_actor_key; // @todo how to best mutex lock this?
 
     ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
     ph_hashtable_insert(&named_actor->actors, &new_actor->ref, new_actor);
 
-    zend_vm_stack_init();
-    ph_vmcontext_get(&new_actor->context.vmc);
-
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     if (named_actor->state == PH_NAMED_ACTOR_CONSTRUCTING) {
         named_actor->state = PH_NAMED_ACTOR_ACTIVE;
     }
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
+    pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
 
     constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
 
@@ -352,9 +368,9 @@ void *worker_function(ph_thread_t *ph_thread)
 
     // Block here to prevent premature freeing of actors when the could be being
     // used by other threads
-    while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->finished_thread_count);
+    while (PHACTOR_G(actor_system)->thread_count + 1 != PHACTOR_G(actor_system)->finished_thread_count);
 
-    ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, ph_actor_free, ph_actor_t *, thread_offset, thread_offset);
+    perform_actor_removals();
 
     ph_vmcontext_set(&ph_thread->context.vmc);
 
@@ -452,6 +468,16 @@ void scheduler_blocking()
     // handled in the main thread (for now)
     message_handling_loop();
 
+    while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->finished_thread_count);
+
+    ph_hashtable_destroy(&PHACTOR_G(actor_system)->named_actors, ph_named_actor_remove);
+
+    // perform_actor_removals(); // shouldn't be needed
+
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
+    ++PHACTOR_G(actor_system)->finished_thread_count;
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
+
     for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + i;
 
@@ -490,7 +516,7 @@ void php_actor_system_dtor_object(zend_object *obj)
 
 void php_actor_system_free_object(zend_object *obj)
 {
-    ph_hashtable_delete_by_value(&PHACTOR_G(actor_system)->actors, ph_actor_free, ph_actor_t *, thread_offset, thread_offset);
+    ZEND_ASSERT(!PHACTOR_G(actor_system)->actors.used);
 
     for (int i = 0; i <= PHACTOR_G(actor_system)->thread_count; ++i) {
         ph_vector_destroy(PHACTOR_G(actor_system)->actor_removals + i);
@@ -501,8 +527,8 @@ void php_actor_system_free_object(zend_object *obj)
 
     free(PHACTOR_G(actor_system)->worker_threads);
     free(PHACTOR_G(actor_system)->actor_removals);
-    free(PHACTOR_G(actor_system)->actors.values); // @todo should use ph_hashtable_destroy (should be empty)
-    free(PHACTOR_G(actor_system)->named_actors.values); // @todo should use ph_hashtable_destroy (should be empty)
+    ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors, ph_actor_free_dummy);
+    // PHACTOR_G(actor_system)->named_actors is already destroyed
 }
 
 ZEND_BEGIN_ARG_INFO(ActorSystem_construct_arginfo, 0)

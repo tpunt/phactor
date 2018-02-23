@@ -26,7 +26,7 @@
 #include "src/ds/ph_queue.h"
 #include "src/classes/actor_system.h"
 
-extern pthread_mutex_t phactor_named_actors_mutex;
+extern pthread_mutex_t ph_named_actors_mutex;
 extern ph_actor_system_t *actor_system;
 extern zend_class_entry *Actor_ce;
 
@@ -57,6 +57,8 @@ zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int
         return 0;
     }
 
+    pthread_mutex_lock(&PHACTOR_G(ph_named_actors_mutex));
+
     ph_str_set(&key, ZSTR_VAL(name), ZSTR_LEN(name));
 
     named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, &key);
@@ -72,7 +74,12 @@ zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int
         ph_hashtable_insert(&PHACTOR_G(actor_system)->named_actors, key2, named_actor);
     } else {
         key2 = ph_hashtable_key_fetch(&PHACTOR_G(actor_system)->named_actors, &key);
+        ph_str_value_free(&key);
     }
+
+    int new_count = ++named_actor->perceived_used;
+
+    pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
 
     ph_task_t *task = ph_task_create_new_actor(key2, class, args, argc);
 
@@ -86,10 +93,6 @@ zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int
     pthread_mutex_lock(&thread->tasks.lock);
     ph_queue_push(&thread->tasks, task);
     pthread_mutex_unlock(&thread->tasks.lock);
-
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
-    int new_count = ++named_actor->perceived_used;
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
 
     return new_count;
 }
@@ -115,7 +118,27 @@ PHP_FUNCTION(spawn)
     RETVAL_LONG(spawn_new_actor(name, class->name, args, argc));
 }
 
+ZEND_BEGIN_ARG_INFO_EX(remove_arginfo, 0, 0, 1)
+    ZEND_ARG_INFO(0, name)
+    ZEND_ARG_INFO(0, count)
+ZEND_END_ARG_INFO()
+
+PHP_FUNCTION(remove)
+{
+    zend_string *name;
+    zend_long count = -1;
+
+    ZEND_PARSE_PARAMETERS_START(1, 2)
+        Z_PARAM_STR(name)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_LONG(count)
+    ZEND_PARSE_PARAMETERS_END();
+
+    RETVAL_LONG(ph_named_actor_removal(name, count));
+}
+
 const zend_function_entry phactor_functions[] = {
     ZEND_NS_FE("phactor", spawn, spawn_arginfo)
+    ZEND_NS_FE("phactor", remove, remove_arginfo)
     PHP_FE_END
 };

@@ -30,7 +30,7 @@
 extern ph_actor_system_t *actor_system;
 extern __thread ph_task_t *currently_processing_task;
 extern __thread int thread_offset;
-extern pthread_mutex_t phactor_named_actors_mutex;
+extern pthread_mutex_t ph_named_actors_mutex;
 
 pthread_mutex_t global_actor_id_lock;
 int global_actor_id;
@@ -56,14 +56,14 @@ ph_actor_t *ph_actor_retrieve_from_name(ph_string_t *actor_name)
         return NULL;
     }
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
+    pthread_mutex_lock(&PHACTOR_G(ph_named_actors_mutex));
     if (named_actor->state == PH_NAMED_ACTOR_CONSTRUCTING) {
-        pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
+        pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
         // This enables for the message to be enqueued again if the actor is
         // still being created
         return (void *) 1; // @todo find a better way?
     }
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
+    pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
 
     return ph_hashtable_random_value(&named_actor->actors);
 }
@@ -76,19 +76,19 @@ ph_actor_t *ph_actor_retrieve_from_ref(ph_string_t *actor_ref)
         return NULL;
     }
 
+    pthread_mutex_lock(&PHACTOR_G(ph_named_actors_mutex));
+
     // we have to go through the named actors in case the actor has not yet been created
     ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
 
     assert(named_actor);
 
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
     if (named_actor->state == PH_NAMED_ACTOR_CONSTRUCTING) {
-        pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
-        // This enables for the message to be enqueued again if the actor is
-        // still being created
-        return (void *) 1; // @todo find a better way?
+        // Enqueue the message again, since the actor is still being created
+        actor = (ph_actor_t *) 1; // @todo find a better way?
     }
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
+
+    pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
 
     return actor;
 }
@@ -104,18 +104,14 @@ static void ph_actor_set_ref(ph_string_t *ref)
 
 void ph_actor_remove(void *target_actor_void)
 {
-    if (target_actor_void == NULL) { // remote actor
-        printf("Freeing remote actor\n"); // when will a remote actor actually be freed?
-        return;
-    }
-
     ph_actor_t *target_actor = target_actor_void;
 
     ph_hashtable_delete(&PHACTOR_G(actor_system)->actors, &target_actor->ref, ph_actor_free);
 }
 
-static void ph_actor_mark_for_removal(ph_actor_t *actor)
+void ph_actor_mark_for_removal(void *actor_void)
 {
+    ph_actor_t *actor = actor_void;
     ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->thread_offset;
 
     pthread_mutex_lock(&actor_removals->lock);
@@ -136,7 +132,7 @@ static void ph_named_actor_free(void *named_actor_void)
 {
     ph_named_actor_t *named_actor = (ph_named_actor_t *) named_actor_void;
 
-    ph_hashtable_destroy(&named_actor->actors, ph_actor_free);
+    ph_hashtable_destroy(&named_actor->actors, ph_actor_mark_for_removal);
 
     free(named_actor);
 }
@@ -147,10 +143,11 @@ static void ph_actor_remove_from_named_actors(void *actor_void)
     // the actor has already been deleted, it just needs removing from the ht
 }
 
+void ph_actor_free_dummy(void *actor_void){}
+
 void ph_actor_free(void *actor_void)
 {
     ph_actor_t *actor = (ph_actor_t *) actor_void;
-    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
     ph_vmcontext_t vmc;
 
     ph_vmcontext_swap(&vmc, &actor->context.vmc);
@@ -159,21 +156,51 @@ void ph_actor_free(void *actor_void)
 
     ph_mcontext_free(&actor->context.mc);
 
-    ph_actor_dtor_object(&actor->obj); // @todo set GC_REFCOUNT(&actor->obj) = 0; ?
-
-    ph_hashtable_delete(&named_actor->actors, &actor->ref, ph_actor_remove_from_named_actors);
-
-    pthread_mutex_lock(&PHACTOR_G(phactor_named_actors_mutex));
-    --named_actor->perceived_used;
-
-    if (named_actor->perceived_used == 0) {
-        ph_named_actor_free(named_actor); // @todo pass in actor->name instead and remove it from ht
-    }
-    pthread_mutex_unlock(&PHACTOR_G(phactor_named_actors_mutex));
+    ph_actor_dtor_object(&actor->obj);
 
     ph_str_value_free(&actor->ref);
     pthread_mutex_destroy(&actor->lock);
     efree(actor);
+}
+
+void ph_named_actor_remove(void *named_actor_void)
+{
+    ph_named_actor_t *named_actor = named_actor_void;
+
+    ph_hashtable_destroy(&named_actor->actors, ph_actor_mark_for_removal);
+}
+
+zend_long ph_named_actor_removal(zend_string *name, zend_long count)
+{
+    if (!count) {
+        return count;
+    }
+
+    ph_string_t key;
+
+    ph_str_set(&key, ZSTR_VAL(name), ZSTR_LEN(name));
+
+    pthread_mutex_lock(&ph_named_actors_mutex);
+
+    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, &key);
+
+    if (!named_actor) {
+        // @todo throw exception?
+        pthread_mutex_unlock(&ph_named_actors_mutex);
+        return 0;
+    }
+
+    if (count < 0 || count >= named_actor->perceived_used) {
+        count = named_actor->perceived_used;
+        ph_hashtable_delete(&PHACTOR_G(actor_system)->named_actors, &key, ph_named_actor_remove);
+    } else {
+        named_actor->perceived_used -= count;
+        ph_hashtable_delete_n(&named_actor->actors, count, ph_actor_mark_for_removal);
+    }
+
+    pthread_mutex_unlock(&ph_named_actors_mutex);
+
+    return count;
 }
 
 static void receive_block(zval *actor_zval, zval *return_value)
@@ -359,7 +386,20 @@ PHP_METHOD(Actor, remove)
         return;
     }
 
-    ph_actor_mark_for_removal(ph_actor_retrieve_from_zval(getThis()));
+    pthread_mutex_lock(&ph_named_actors_mutex);
+    ph_actor_t *actor = ph_actor_retrieve_from_zval(getThis());
+    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
+
+    if (named_actor) {
+        if (named_actor->perceived_used == 1) {
+            ph_hashtable_delete(&PHACTOR_G(actor_system)->named_actors, actor->name, ph_named_actor_remove);
+        } else {
+            --named_actor->perceived_used;
+            ph_hashtable_delete(&named_actor->actors, &actor->ref, ph_actor_mark_for_removal);
+        }
+    }
+
+    pthread_mutex_unlock(&ph_named_actors_mutex);
 }
 
 ZEND_BEGIN_ARG_INFO(Actor_abstract_receiveblock_arginfo, 0)

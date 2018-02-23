@@ -324,6 +324,36 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
     }
 }
 
+void ph_hashtable_delete_n(ph_hashtable_t *ht, int n, void (*dtor_value)(void *))
+{
+    pthread_mutex_lock(&ht->lock);
+
+    for (int i = 0; i < ht->size && ht->used && n; ++i) {
+        ph_bucket_t *b = ht->values + i;
+
+        if (b->value) {
+            dtor_value(b->value);
+
+            if (ht->flags & FREE_KEYS) {
+                ph_str_free(b->key);
+            }
+
+            b->key = NULL;
+            b->hash = 1; // tombstone
+            b->value = NULL;
+            b->variance = 0;
+            --ht->used;
+            --n;
+
+            // @todo implement backtracking?
+        }
+    }
+
+    // @todo hash table downsizing?
+
+    pthread_mutex_unlock(&ht->lock);
+}
+
 void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
 {
     for (int i = 0; i < phht->size; ++i) {

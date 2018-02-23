@@ -37,7 +37,7 @@
 # error "TSRMLS static cache is required"
 #endif
 
-extern pthread_mutex_t phactor_named_actors_mutex;
+extern pthread_mutex_t ph_named_actors_mutex;
 extern pthread_mutex_t global_actor_id_lock;
 
 ZEND_DECLARE_MODULE_GLOBALS(phactor)
@@ -47,7 +47,7 @@ PHP_MINIT_FUNCTION(phactor)
     actor_system_ce_init();
     ph_actor_ce_init();
 
-    pthread_mutex_init(&phactor_named_actors_mutex, NULL);
+    pthread_mutex_init(&ph_named_actors_mutex, NULL);
     pthread_mutex_init(&global_actor_id_lock, NULL);
 
     return SUCCESS;
@@ -55,7 +55,7 @@ PHP_MINIT_FUNCTION(phactor)
 
 PHP_MSHUTDOWN_FUNCTION(phactor)
 {
-    pthread_mutex_destroy(&phactor_named_actors_mutex);
+    pthread_mutex_destroy(&ph_named_actors_mutex);
     pthread_mutex_destroy(&global_actor_id_lock);
 
     return SUCCESS;
