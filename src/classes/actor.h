@@ -51,8 +51,7 @@ typedef struct _ph_named_actor_t {
     // ph_string_t name; // needed?
     ph_named_actor_state_t state;
     int perceived_used; // for the calling code
-    ph_hashtable_t actors;
-    // mutex lock?
+    ph_hashtable_t actors; // actors.lock mutex is reused for this struct
 } ph_named_actor_t;
 
 ph_actor_t *ph_actor_retrieve_from_name(ph_string_t *actor_name);

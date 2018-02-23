@@ -62,26 +62,22 @@ void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *))
 
 void ph_hashtable_insert_ind(ph_hashtable_t *ht, int hash, void *value)
 {
-    pthread_mutex_lock(&ht->lock);
     // resize at 75% capacity
     if (ht->used == ht->size - (ht->size >> 2)) {
         ph_hashtable_resize(ht);
     }
 
     ph_hashtable_insert_direct(ht, NULL, hash, value);
-    pthread_mutex_unlock(&ht->lock);
 }
 
 void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value)
 {
-    pthread_mutex_lock(&ht->lock);
     // resize at 75% capacity
     if (ht->used == ht->size - (ht->size >> 2)) {
         ph_hashtable_resize(ht);
     }
 
     ph_hashtable_insert_direct(ht, key, get_hash(key), value);
-    pthread_mutex_unlock(&ht->lock);
 }
 
 static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value)
@@ -165,20 +161,12 @@ static int get_hash(ph_string_t *key)
 
 void *ph_hashtable_search_ind(ph_hashtable_t *ht, int hash)
 {
-    pthread_mutex_lock(&ht->lock);
-    void *e = ph_hashtable_search_direct(ht, NULL, hash);
-    pthread_mutex_unlock(&ht->lock);
-
-    return e;
+    return ph_hashtable_search_direct(ht, NULL, hash);
 }
 
 void *ph_hashtable_search(ph_hashtable_t *ht, ph_string_t *key)
 {
-    pthread_mutex_lock(&ht->lock);
-    void *e = ph_hashtable_search_direct(ht, key, get_hash(key));
-    pthread_mutex_unlock(&ht->lock);
-
-    return e;
+    return ph_hashtable_search_direct(ht, key, get_hash(key));
 }
 
 void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
@@ -208,11 +196,7 @@ void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
 
 ph_string_t *ph_hashtable_key_fetch(ph_hashtable_t *ht, ph_string_t *key)
 {
-    pthread_mutex_lock(&ht->lock);
-    ph_string_t *new_key = ph_hashtable_key_fetch_direct(ht, key, get_hash(key));
-    pthread_mutex_unlock(&ht->lock);
-
-    return new_key;
+    return ph_hashtable_key_fetch_direct(ht, key, get_hash(key));
 }
 
 static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
@@ -242,16 +226,12 @@ static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_
 
 void ph_hashtable_update_ind(ph_hashtable_t *ht, int hash, void *value)
 {
-    pthread_mutex_lock(&ht->lock);
     ph_hashtable_update_direct(ht, NULL, hash, value);
-    pthread_mutex_unlock(&ht->lock);
 }
 
 void ph_hashtable_update(ph_hashtable_t *ht, ph_string_t *key, void *value)
 {
-    pthread_mutex_lock(&ht->lock);
     ph_hashtable_update_direct(ht, key, get_hash(key), value);
-    pthread_mutex_unlock(&ht->lock);
 }
 
 void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value)
@@ -275,16 +255,12 @@ void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
 
 void ph_hashtable_delete_ind(ph_hashtable_t *ht, int hash, void (*dtor_value)(void *))
 {
-    pthread_mutex_lock(&ht->lock);
     ph_hashtable_delete_direct(ht, NULL, hash, dtor_value);
-    pthread_mutex_unlock(&ht->lock);
 }
 
 void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key, void (*dtor_value)(void *))
 {
-    pthread_mutex_lock(&ht->lock);
     ph_hashtable_delete_direct(ht, key, get_hash(key), dtor_value);
-    pthread_mutex_unlock(&ht->lock);
 }
 
 void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void (*dtor_value)(void *))
@@ -326,8 +302,6 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
 
 void ph_hashtable_delete_n(ph_hashtable_t *ht, int n, void (*dtor_value)(void *))
 {
-    pthread_mutex_lock(&ht->lock);
-
     for (int i = 0; i < ht->size && ht->used && n; ++i) {
         ph_bucket_t *b = ht->values + i;
 
@@ -350,8 +324,6 @@ void ph_hashtable_delete_n(ph_hashtable_t *ht, int n, void (*dtor_value)(void *)
     }
 
     // @todo hash table downsizing?
-
-    pthread_mutex_unlock(&ht->lock);
 }
 
 void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
@@ -376,7 +348,6 @@ void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
 
 void *ph_hashtable_random_value(ph_hashtable_t *ht)
 {
-    pthread_mutex_lock(&ht->lock);
     assert(ht->used);
 
     // @todo improve?
@@ -384,7 +355,6 @@ void *ph_hashtable_random_value(ph_hashtable_t *ht)
         int i = rand() % ht->size; // @todo modulo bias
 
         if (ht->values[i].value) {
-            pthread_mutex_unlock(&ht->lock);
             return ht->values[i].value;
         }
     } while (1);

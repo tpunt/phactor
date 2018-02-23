@@ -26,7 +26,6 @@
 #include "src/ds/ph_queue.h"
 #include "src/classes/actor_system.h"
 
-extern pthread_mutex_t ph_named_actors_mutex;
 extern ph_actor_system_t *actor_system;
 extern zend_class_entry *Actor_ce;
 
@@ -57,7 +56,7 @@ zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int
         return 0;
     }
 
-    pthread_mutex_lock(&PHACTOR_G(ph_named_actors_mutex));
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->named_actors.lock);
 
     ph_str_set(&key, ZSTR_VAL(name), ZSTR_LEN(name));
 
@@ -77,9 +76,11 @@ zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int
         ph_str_value_free(&key);
     }
 
+    pthread_mutex_lock(&named_actor->actors.lock);
     int new_count = ++named_actor->perceived_used;
+    pthread_mutex_unlock(&named_actor->actors.lock);
 
-    pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
 
     ph_task_t *task = ph_task_create_new_actor(key2, class, args, argc);
 

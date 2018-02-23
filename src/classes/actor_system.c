@@ -39,8 +39,6 @@ __thread ph_thread_t *thread;
 __thread int thread_offset;
 ph_thread_t main_thread;
 
-pthread_mutex_t ph_named_actors_mutex;
-
 zend_object_handlers phactor_actor_system_handlers;
 zend_class_entry *ActorSystem_ce;
 
@@ -175,39 +173,52 @@ void new_actor(ph_task_t *task)
     ph_actor_t *new_actor = (ph_actor_t *)((char *)Z_OBJ(zobj) - Z_OBJ(zobj)->handlers->offset);
     ph_string_t *named_actor_key = task->u.nat.named_actor_key;
 
-    pthread_mutex_lock(&PHACTOR_G(ph_named_actors_mutex));
-    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, named_actor_key);
-
     // @todo what are the technical reasons for not doing this in phactor_actor_ctor?
     zend_vm_stack_init();
     ph_vmcontext_get(&new_actor->context.vmc);
 
-    if (!named_actor || named_actor->actors.used == named_actor->perceived_used) {
-        // The first condition can occur if an actor is spawn()ed and then
-        // remove()d before the new thread has a chance to create it.
-        //
-        // The second condition can occur if multiple actors are spawn()ed, and
-        // then multiple actors (but not all of them) are remove()d before
-        // they have all been created. This leaves more new actor tasks that
-        // have still yet to be created than the perceived_used count of a
-        // named actor. So we have to discard them.
-        //
-        // This branch should be rarely hit, so optimising it is not a concern
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->named_actors.lock);
+    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, named_actor_key);
+
+    if (!named_actor) { // quite unexpected
+        // Occurs if an actor is spawn()ed and then remove()d before the new
+        // thread has a chance to create it.
+        pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
         ph_actor_free(new_actor);
         zend_string_free(class);
-        pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
         return;
     }
 
-    new_actor->name = named_actor_key; // @todo how to best mutex lock this?
+    pthread_mutex_lock(&named_actor->actors.lock);
+    if (named_actor->actors.used == named_actor->perceived_used) { // quite unexpected
+        // Occurs if multiple actors are spawn()ed, and then multiple actors
+        // (but not all of them) are remove()d before they have all been
+        // created. This leaves more new actor tasks that have still yet to be
+        // created than the perceived_used count of a named actor. So we have to
+        // discard them.
+        pthread_mutex_unlock(&named_actor->actors.lock);
+        pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
+        ph_actor_free(new_actor);
+        zend_string_free(class);
+        return;
+    }
 
+    new_actor->name = named_actor_key;
+    pthread_mutex_unlock(&named_actor->actors.lock);
+
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors.lock);
     ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors.lock);
+
+    pthread_mutex_lock(&named_actor->actors.lock);
     ph_hashtable_insert(&named_actor->actors, &new_actor->ref, new_actor);
 
     if (named_actor->state == PH_NAMED_ACTOR_CONSTRUCTING) {
         named_actor->state = PH_NAMED_ACTOR_ACTIVE;
     }
-    pthread_mutex_unlock(&PHACTOR_G(ph_named_actors_mutex));
+    pthread_mutex_unlock(&named_actor->actors.lock);
+
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
 
     constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
 
