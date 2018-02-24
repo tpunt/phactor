@@ -19,7 +19,8 @@ class Test extends Actor
     }
 }
 
-class Test2 extends Actor {
+class Test2 extends Actor
+{
     function __construct(int $n)
     {
         $this->send('test', ['ping', $n]);
@@ -35,7 +36,7 @@ class Test2 extends Actor {
             ActorSystem::shutdown();
         }
     }
-};
+}
 
 spawn('test', Test::class);
 spawn('test2', Test2::class, 1);

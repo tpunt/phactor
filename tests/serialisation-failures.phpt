@@ -19,7 +19,8 @@ try {
 
 spawn('test2', Test2::class);
 
-class Test extends Actor {
+class Test extends Actor
+{
     public function receive($sender, $message) {}
 }
 

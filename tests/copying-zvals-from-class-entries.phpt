@@ -12,7 +12,8 @@ $actorSystem = new ActorSystem(true);
 spawn('test', Test::class);
 spawn('test2', Test2::class);
 
-class Test extends Actor {
+class Test extends Actor
+{
     public function receive($sender, $message)
     {
         var_dump(Test2::E, Test2::F);
