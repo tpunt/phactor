@@ -26,21 +26,22 @@ static void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, in
 static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
 static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value);
 void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value);
-void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void (*dtor_value)(void *));
+void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
 static void ph_hashtable_resize(ph_hashtable_t *ht);
 static void ph_hashtable_repopulate(ph_hashtable_t *ht, ph_bucket_t *old_values, int old_size);
 static int get_hash(ph_string_t *key);
 
-void ph_hashtable_init(ph_hashtable_t *ht, int size)
+void ph_hashtable_init(ph_hashtable_t *ht, int size, void (*dtor)(void *))
 {
     ht->values = calloc(sizeof(ph_bucket_t), size);
     ht->size = size;
     ht->used = 0;
     ht->flags = 0;
+    ht->dtor = dtor;
     pthread_mutex_init(&ht->lock, NULL);
 }
 
-void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *))
+void ph_hashtable_destroy(ph_hashtable_t *ht)
 {
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + i;
@@ -49,7 +50,7 @@ void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *))
             continue;
         }
 
-        dtor_value(b->value);
+        ht->dtor(b->value);
 
         if (b->key && ht->flags & FREE_KEYS) {
             ph_str_free(b->key);
@@ -253,17 +254,17 @@ void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
     }
 }
 
-void ph_hashtable_delete_ind(ph_hashtable_t *ht, int hash, void (*dtor_value)(void *))
+void ph_hashtable_delete_ind(ph_hashtable_t *ht, int hash)
 {
-    ph_hashtable_delete_direct(ht, NULL, hash, dtor_value);
+    ph_hashtable_delete_direct(ht, NULL, hash);
 }
 
-void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key, void (*dtor_value)(void *))
+void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key)
 {
-    ph_hashtable_delete_direct(ht, key, get_hash(key), dtor_value);
+    ph_hashtable_delete_direct(ht, key, get_hash(key));
 }
 
-void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void (*dtor_value)(void *))
+void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
 {
     int index = hash & (ht->size - 1);
 
@@ -272,7 +273,7 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
 
         if (b->value) {
             if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
-                dtor_value(b->value);
+                ht->dtor(b->value);
 
                 if (ht->flags & FREE_KEYS) {
                     ph_str_free(b->key);
@@ -300,13 +301,13 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
     }
 }
 
-void ph_hashtable_delete_n(ph_hashtable_t *ht, int n, void (*dtor_value)(void *))
+void ph_hashtable_delete_n(ph_hashtable_t *ht, int n)
 {
     for (int i = 0; i < ht->size && ht->used && n; ++i) {
         ph_bucket_t *b = ht->values + i;
 
         if (b->value) {
-            dtor_value(b->value);
+            ht->dtor(b->value);
 
             if (ht->flags & FREE_KEYS) {
                 ph_str_free(b->key);

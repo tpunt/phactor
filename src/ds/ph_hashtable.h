@@ -45,22 +45,23 @@ typedef struct _ph_hashtable_t {
     int size;
     int used;
     int flags;
+    void (*dtor)(void *);
     pthread_mutex_t lock;
 } ph_hashtable_t;
 
-void ph_hashtable_init(ph_hashtable_t *ht, int size);
+void ph_hashtable_init(ph_hashtable_t *ht, int size, void (*dtor)(void *));
 void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_insert_ind(ph_hashtable_t *ht, int hash, void *value);
-void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key, void (*dtor_value)(void *));
-void ph_hashtable_delete_ind(ph_hashtable_t *ht, int hash, void (*dtor_value)(void *));
+void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key);
+void ph_hashtable_delete_ind(ph_hashtable_t *ht, int hash);
 void *ph_hashtable_search(ph_hashtable_t *ht, ph_string_t *key);
 void *ph_hashtable_search_ind(ph_hashtable_t *ht, int hash);
 ph_string_t *ph_hashtable_key_fetch(ph_hashtable_t *ht, ph_string_t *key);
 void ph_hashtable_update(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_update_ind(ph_hashtable_t *ht, int hash, void *value);
-void ph_hashtable_destroy(ph_hashtable_t *ht, void (*dtor_value)(void *));
+void ph_hashtable_destroy(ph_hashtable_t *ht);
 void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht);
 void *ph_hashtable_random_value(ph_hashtable_t *ht);
-void ph_hashtable_delete_n(ph_hashtable_t *ht, int n, void (*dtor_value)(void *));
+void ph_hashtable_delete_n(ph_hashtable_t *ht, int n);
 
 #endif

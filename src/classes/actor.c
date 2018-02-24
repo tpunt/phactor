@@ -109,8 +109,9 @@ void ph_actor_remove(void *target_actor_void)
     ph_actor_t *target_actor = target_actor_void;
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors.lock);
-    ph_hashtable_delete(&PHACTOR_G(actor_system)->actors, &target_actor->ref, ph_actor_free);
+    ph_hashtable_delete(&PHACTOR_G(actor_system)->actors, &target_actor->ref);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors.lock);
+    ph_actor_free(target_actor);
 }
 
 void ph_actor_mark_for_removal(void *actor_void)
@@ -136,7 +137,7 @@ static void ph_named_actor_free(void *named_actor_void)
 {
     ph_named_actor_t *named_actor = (ph_named_actor_t *) named_actor_void;
 
-    ph_hashtable_destroy(&named_actor->actors, ph_actor_mark_for_removal);
+    ph_hashtable_destroy(&named_actor->actors);
 
     free(named_actor);
 }
@@ -149,9 +150,8 @@ static void ph_actor_remove_from_named_actors(void *actor_void)
 
 void ph_actor_free_dummy(void *actor_void){}
 
-void ph_actor_free(void *actor_void)
+void ph_actor_free(ph_actor_t *actor)
 {
-    ph_actor_t *actor = (ph_actor_t *) actor_void;
     ph_vmcontext_t vmc;
 
     ph_vmcontext_swap(&vmc, &actor->context.vmc);
@@ -171,7 +171,7 @@ void ph_named_actor_remove(void *named_actor_void)
 {
     ph_named_actor_t *named_actor = named_actor_void;
 
-    ph_hashtable_destroy(&named_actor->actors, ph_actor_mark_for_removal);
+    ph_hashtable_destroy(&named_actor->actors);
 }
 
 zend_long ph_named_actor_removal(zend_string *name, zend_long count)
@@ -193,10 +193,10 @@ zend_long ph_named_actor_removal(zend_string *name, zend_long count)
         pthread_mutex_lock(&named_actor->actors.lock);
         if (count < 0 || count >= named_actor->perceived_used) {
             count = named_actor->perceived_used;
-            ph_hashtable_delete(&PHACTOR_G(actor_system)->named_actors, &key, ph_named_actor_remove);
+            ph_hashtable_delete(&PHACTOR_G(actor_system)->named_actors, &key);
         } else {
             named_actor->perceived_used -= count;
-            ph_hashtable_delete_n(&named_actor->actors, count, ph_actor_mark_for_removal);
+            ph_hashtable_delete_n(&named_actor->actors, count);
         }
         pthread_mutex_unlock(&named_actor->actors.lock);
     }
@@ -396,10 +396,10 @@ PHP_METHOD(Actor, remove)
     if (named_actor) {
         pthread_mutex_lock(&named_actor->actors.lock);
         if (named_actor->perceived_used == 1) {
-            ph_hashtable_delete(&PHACTOR_G(actor_system)->named_actors, actor->name, ph_named_actor_remove);
+            ph_hashtable_delete(&PHACTOR_G(actor_system)->named_actors, actor->name);
         } else {
             --named_actor->perceived_used;
-            ph_hashtable_delete(&named_actor->actors, &actor->ref, ph_actor_mark_for_removal);
+            ph_hashtable_delete(&named_actor->actors, &actor->ref);
         }
         pthread_mutex_unlock(&named_actor->actors.lock);
     }

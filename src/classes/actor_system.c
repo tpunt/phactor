@@ -481,7 +481,7 @@ void scheduler_blocking()
 
     while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->finished_thread_count);
 
-    ph_hashtable_destroy(&PHACTOR_G(actor_system)->named_actors, ph_named_actor_remove);
+    ph_hashtable_destroy(&PHACTOR_G(actor_system)->named_actors);
 
     // perform_actor_removals(); // shouldn't be needed
 
@@ -507,8 +507,8 @@ static zend_object* phactor_actor_system_ctor(zend_class_entry *entry)
 
         // @todo create the UUID on actor creation - this is needed for remote actor systems only
 
-        ph_hashtable_init(&PHACTOR_G(actor_system)->actors, 8);
-        ph_hashtable_init(&PHACTOR_G(actor_system)->named_actors, 8);
+        ph_hashtable_init(&PHACTOR_G(actor_system)->actors, 8, ph_actor_free_dummy);
+        ph_hashtable_init(&PHACTOR_G(actor_system)->named_actors, 8, ph_named_actor_remove);
 
         zend_object_std_init(&PHACTOR_G(actor_system)->obj, entry);
         object_properties_init(&PHACTOR_G(actor_system)->obj, entry);
@@ -538,7 +538,7 @@ void php_actor_system_free_object(zend_object *obj)
 
     free(PHACTOR_G(actor_system)->worker_threads);
     free(PHACTOR_G(actor_system)->actor_removals);
-    ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors, ph_actor_free_dummy);
+    ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors);
     // PHACTOR_G(actor_system)->named_actors is already destroyed
 }
 

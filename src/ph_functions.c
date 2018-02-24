@@ -35,7 +35,7 @@ ph_named_actor_t *new_named_actor(void)
 
     named_actor->state = PH_NAMED_ACTOR_CONSTRUCTING;
     named_actor->perceived_used = 0;
-    ph_hashtable_init(&named_actor->actors, 1);
+    ph_hashtable_init(&named_actor->actors, 1, ph_actor_mark_for_removal);
 
     return named_actor;
 }
