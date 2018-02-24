@@ -206,6 +206,28 @@ zend_long ph_named_actor_removal(zend_string *name, zend_long count)
     return count;
 }
 
+zend_long ph_named_actor_total(zend_string *name)
+{
+    ph_string_t key;
+    zend_long count = 0;
+
+    ph_str_set(&key, ZSTR_VAL(name), ZSTR_LEN(name));
+
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->named_actors.lock);
+    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, &key);
+
+    if (named_actor) {
+        pthread_mutex_lock(&named_actor->actors.lock);
+        count = named_actor->perceived_used;
+        pthread_mutex_unlock(&named_actor->actors.lock);
+    }
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
+
+    ph_str_value_free(&key);
+
+    return count;
+}
+
 static void receive_block(zval *actor_zval, zval *return_value)
 {
     ph_actor_t *actor = ph_actor_retrieve_from_zval(actor_zval);

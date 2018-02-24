@@ -138,8 +138,24 @@ PHP_FUNCTION(remove)
     RETVAL_LONG(ph_named_actor_removal(name, count));
 }
 
+ZEND_BEGIN_ARG_INFO_EX(total_arginfo, 0, 0, 1)
+    ZEND_ARG_INFO(0, name)
+ZEND_END_ARG_INFO()
+
+PHP_FUNCTION(total)
+{
+    zend_string *name;
+
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_STR(name)
+    ZEND_PARSE_PARAMETERS_END();
+
+    RETVAL_LONG(ph_named_actor_total(name));
+}
+
 const zend_function_entry phactor_functions[] = {
     ZEND_NS_FE("phactor", spawn, spawn_arginfo)
     ZEND_NS_FE("phactor", remove, remove_arginfo)
+    ZEND_NS_FE("phactor", total, total_arginfo)
     PHP_FE_END
 };

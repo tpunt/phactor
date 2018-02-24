@@ -61,6 +61,7 @@ void ph_actor_free(ph_actor_t *actor);
 void ph_actor_free_dummy(void *actor_void);
 void ph_actor_remove(void *target_actor_void);
 zend_long ph_named_actor_removal(zend_string *name, zend_long count);
+zend_long ph_named_actor_total(zend_string *name);
 void ph_named_actor_remove(void *named_actor_void);
 void ph_actor_mark_for_removal(void *actor_void);
 

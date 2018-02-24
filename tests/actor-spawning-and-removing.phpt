@@ -3,7 +3,7 @@ Spawning and removing actors
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn, function remove};
+use phactor\{ActorSystem, Actor, function spawn, function remove, function total};
 
 ini_set('memory_limit', -1);
 
@@ -30,12 +30,18 @@ class Shutdown extends Actor
 
 while (spawn('A', A::class) < 1000);
 
+var_dump(total('A'));
 var_dump(remove('A', 100));
+var_dump(total('A'));
 var_dump(remove('A'));
+var_dump(total('A'));
 var_dump(remove('A'));
 
 spawn('s', Shutdown::class);
 --EXPECT--
+int(1000)
 int(100)
 int(900)
+int(900)
+int(0)
 int(0)
