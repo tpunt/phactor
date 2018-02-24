@@ -71,12 +71,13 @@ ph_actor_t *ph_actor_retrieve_from_name(ph_string_t *actor_name)
 
 ph_actor_t *ph_actor_retrieve_from_ref(ph_string_t *actor_ref)
 {
+    // We need to hold the named_actors mutex before the actors mutex to prevent
+    // deadlocking with the new_actor() function, which holds them in this order.
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->named_actors.lock);
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors.lock);
     ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors, actor_ref);
 
     if (actor) {
-        pthread_mutex_lock(&PHACTOR_G(actor_system)->named_actors.lock);
-
         // we have to go through the named actors in case the actor has not yet been created
         ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, actor->name);
 
@@ -87,10 +88,9 @@ ph_actor_t *ph_actor_retrieve_from_ref(ph_string_t *actor_ref)
             // Enqueue the message again, since the actor is still being created
             actor = (ph_actor_t *) 1; // @todo find a better way?
         }
-
-        pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
     }
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors.lock);
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
 
     return actor;
 }
