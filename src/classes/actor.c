@@ -203,6 +203,8 @@ zend_long ph_named_actor_removal(zend_string *name, zend_long count)
 
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
 
+    ph_str_value_free(&key);
+
     return count;
 }
 
