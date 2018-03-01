@@ -5,17 +5,20 @@ Test basic message passing
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
 $actorSystem = new ActorSystem(true);
 
 class Test extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
-        var_dump("({$message[1]}) {$message[0]}");
+        while (true) {
+            $message = $this->receiveBlock();
+            var_dump("({$message[1]}) {$message[0]}");
 
-        $this->send($sender, ['pong', $message[1] + 1]);
+            $this->send('test2', ['pong', $message[1] + 1]);
+        }
     }
 }
 
@@ -26,20 +29,25 @@ class Test2 extends Actor
         $this->send('test', ['ping', $n]);
     }
 
-    function receive($sender, $message)
+    function receive()
     {
-        var_dump("({$message[1]}) {$message[0]}");
+        while (true) {
+            $message = $this->receiveBlock();
+            var_dump("({$message[1]}) {$message[0]}");
 
-        if ($message[1] < 10) {
-            $this->send($sender, ['ping', $message[1] + 1]);
-        } else {
-            ActorSystem::shutdown();
+            if ($message[1] < 10) {
+                $this->send('test', ['ping', $message[1] + 1]);
+            } else {
+                break;
+            }
         }
+
+        ActorSystem::shutdown();
     }
 }
 
-spawn('test', Test::class);
-spawn('test2', Test2::class, 1);
+new ActorRef(Test::class, [], 'test');
+new ActorRef(Test2::class, [1], 'test2');
 --EXPECT--
 string(8) "(1) ping"
 string(8) "(2) pong"

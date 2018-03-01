@@ -30,8 +30,6 @@ extern ph_actor_system_t *actor_system;
 char *get_task_type(ph_task_type_t type)
 {
     switch (type) {
-        case PH_PROCESS_MESSAGE_TASK:
-            return "PMT";
         case PH_SEND_MESSAGE_TASK:
             return "SMT";
         case PH_RESUME_ACTOR_TASK:
@@ -42,7 +40,7 @@ char *get_task_type(ph_task_type_t type)
             ZEND_ASSERT(0);
     }
 }
-
+/*
 void ph_debug_tasks(ph_queue_t *tasks)
 {
     int task_count = 0;
@@ -59,9 +57,6 @@ void ph_debug_tasks(ph_queue_t *tasks)
         printf("%d) [%s] Task: %p ", task_count, get_task_type(task->type), task);
 
         switch (task->type) {
-            case PH_PROCESS_MESSAGE_TASK:
-                printf("(for Actor: %s)", PH_STRV(task->u.pmt.for_actor->ref) + 28);
-                break;
             case PH_SEND_MESSAGE_TASK:
                 printf("(to Actor: %s, Message: {from_actor_ref = %s, message = %p})",
                     PH_STRV(task->u.smt.to_actor_name) + 28, PH_STRV(task->u.smt.from_actor_ref) + 28, task->u.smt.message);
@@ -96,3 +91,4 @@ void ph_debug_actor_system(void)
 
     printf("\n");
 }
+*/

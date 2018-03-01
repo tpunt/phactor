@@ -16,15 +16,9 @@
   +----------------------------------------------------------------------+
 */
 
-#ifndef PH_FUNCTIONS_H
-#define PH_FUNCTIONS_H
+#ifndef PH_ACTOR_REF_H
+#define PH_ACTOR_REF_H
 
-#include "src/ph_task.h"
-#include "src/classes/actor.h"
-
-ph_named_actor_t *new_named_actor(void);
-zend_long spawn_new_actor(zend_string *name, zend_string *class, zval *args, int argc);
-
-extern const zend_function_entry phactor_functions[];
+void ph_actor_ref_ce_init(void);
 
 #endif

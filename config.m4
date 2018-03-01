@@ -10,14 +10,14 @@ if test "$PHP_PHACTOR" != "no"; then
         src/ph_context.c \
         src/ph_context_switch.S \
         src/ph_zend.c \
-        src/ph_functions.c \
         src/ph_task.c \
         src/ph_message.c \
         src/ds/ph_queue.c \
         src/ds/ph_vector.c \
         src/ds/ph_hashtable.c \
         src/classes/actor_system.c \
-        src/classes/actor.c, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
+        src/classes/actor.c \
+        src/classes/actor_ref.c, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
 
     EXTRA_CFLAGS="$EXTRA_CFLAGS -std=gnu99"
     PHP_SUBST(EXTRA_CFLAGS)

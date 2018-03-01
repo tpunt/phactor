@@ -6,7 +6,7 @@ conditions on reference counts and ultimately heap corruption issues.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
 $actorSystem = new ActorSystem();
 
@@ -14,8 +14,8 @@ class Test extends Actor
 {
     private $a = ['a', 'b', 'c', 'd', 'e', 'f'];
 
-    public function receive($sender, $message) {}
+    public function receive() {ActorSystem::shutdown();}
 }
 
-spawn('test', Test::class);
+new ActorRef(Test::class, [], 'test');
 --EXPECT--

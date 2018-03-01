@@ -32,10 +32,9 @@
 #define ASYNC_THREAD_COUNT 10
 
 typedef struct _ph_thread_t {
-    pthread_t pthread; // must be first member
+    pthread_t pthread;
     zend_ulong id; // local storage ID used to fetch local storage data
     ph_queue_t tasks;
-    pthread_mutex_t ph_task_mutex;
     int offset;
     void*** ls; // pointer to local storage in TSRM
     ph_context_t context;
@@ -45,22 +44,19 @@ typedef struct _ph_actor_system_t {
     // char system_reference[10]; // @todo needed when remote actors are introduced
     zend_bool initialised;
     zend_bool shutdown;
-    ph_hashtable_t actors;
-    ph_hashtable_t named_actors;
+    ph_hashtable_t actors_by_ref;
+    ph_hashtable_t actors_by_name; // ignore this HT mutex lock - use the actors_by_ref HT mutex lock instead
     int thread_count;
     int prepared_thread_count;
     int finished_thread_count;
     ph_thread_t *worker_threads;
-    ph_vector_t *actor_removals;
-    zend_bool daemonised;
+    ph_vector_t *actor_removals; // @todo why not put this in ph_thread_t instead?
     pthread_mutex_t lock;
     zend_object obj;
 } ph_actor_system_t;
 
-#define PH_THREAD_G(v) thread->v
-
 extern ph_thread_t main_thread;
 
-void actor_system_ce_init(void);
+void ph_actor_system_ce_init(void);
 
 #endif

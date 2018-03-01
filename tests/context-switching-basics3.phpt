@@ -3,20 +3,21 @@ Context switching with the C stack.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$as = new ActorSystem(true, 1);
+$as = new ActorSystem(1);
 
 class A extends Actor
 {
     public function __construct()
     {
-        $this->send($this, 1);
+        $this->send(ActorRef::fromActor($this), 1);
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
-        $this->send('B', true); // start actor B
+        $message = $this->receiveBlock();
+        $this->send('B', [ActorRef::fromActor($this), true]); // start actor B
 
         while ($this->receiveBlock()) {
             $this->send('B', $message++);
@@ -26,8 +27,10 @@ class A extends Actor
 
 class B extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
+        [$sender, $message] = $this->receiveBlock();
+
         var_dump(array_map(function ($e) use ($sender) {
             $this->send($sender, true);
             return $e * $this->receiveBlock();
@@ -39,9 +42,8 @@ class B extends Actor
     }
 }
 
-spawn('B', B::class);
-spawn('A', A::class);
-
+new ActorRef(B::class, [], 'B');
+new ActorRef(A::class, [], 'A');
 --EXPECT--
 array(4) {
   [0]=>

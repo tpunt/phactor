@@ -5,10 +5,10 @@ Instantiate a new Actor object without the ActorSystem object.
 --FILE--
 <?php
 
-use phactor\{Actor, function spawn};
+use phactor\{Actor, ActorRef};
 
 try {
-    spawn('a', Actor::class);
+    new ActorRef(Actor::class);
 } catch (Error $e) {
     echo $e->getMessage();
 }

@@ -5,9 +5,9 @@ Ensure that visibility of properties for Actor-based objects is still enforced.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
 class Test extends Actor
 {
@@ -16,8 +16,9 @@ class Test extends Actor
     private $c = 3;
     private $d = 4;
 
-    public function receive($sender, $message)
+    public function receive()
     {
+        $this->receiveBlock();
         var_dump($this->a, $this->b, $this->c);
         ActorSystem::shutdown();
     }
@@ -34,8 +35,8 @@ class Test2 extends Test
     }
 }
 
-spawn('test', Test::class);
-spawn('test2', Test2::class);
+new ActorRef(Test::class, [], 'test');
+new ActorRef(Test2::class);
 --EXPECT--
 int(1)
 int(2)

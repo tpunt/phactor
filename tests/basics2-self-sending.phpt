@@ -5,28 +5,34 @@ Test basic message passing
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
 $actorSystem = new ActorSystem(true);
 
-spawn('test', Test::class);
+new ActorRef(Test::class, [], 'test');
 
 class Test extends Actor
 {
     public function __construct()
     {
-        $this->send($this, 1);
+        $ar = ActorRef::fromActor($this);
+        $this->send($ar, [$ar, 1]);
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
-        var_dump($message);
+        while (true) {
+            [$sender, $message] = $this->receiveBlock();
 
-        if ($message < 10) {
-            $this->send($this, $message + 1);
-        } else {
-            ActorSystem::shutdown();
+            var_dump($message);
+
+            if ($message < 10) {
+                $this->send($sender, [$sender, $message + 1]);
+            } else {
+                break;
+            }
         }
+        ActorSystem::shutdown();
     }
 }
 --EXPECT--

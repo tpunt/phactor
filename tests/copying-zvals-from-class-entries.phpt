@@ -5,17 +5,18 @@ Ensure that constants are correctly handled.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
-spawn('test', Test::class);
-spawn('test2', Test2::class);
+new ActorRef(Test::class, [], 'test');
+new ActorRef(Test2::class, [], 'test2');
 
 class Test extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
+        $sender = $this->receiveBlock();
         var_dump(Test2::E, Test2::F);
         $this->send($sender, 1);
     }
@@ -44,11 +45,12 @@ class Test2 extends Actor
 
     public function __construct()
     {
-        $this->send('test', 1);
+        $this->send('test', ActorRef::fromActor($this)->getName());
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
+        $this->receiveBlock();
         var_dump($this->a, $this->b, self::$c, static::$d, self::E, static::F);
         try {
             var_dump(Test2::B);

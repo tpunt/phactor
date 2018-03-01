@@ -7,21 +7,21 @@ The serialisation points are:
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
 try {
-    spawn('test', Test::class, fopen(__FILE__, 'r'));
+    new ActorRef(Test::class, [fopen(__FILE__, 'r')]);
 } catch (Error $e) {
     var_dump($e->getMessage());
 }
 
-spawn('test2', Test2::class);
+new ActorRef(Test2::class, [], 'test2');
 
 class Test extends Actor
 {
-    public function receive($sender, $message) {}
+    public function receive() {}
 }
 
 class Test2 extends Actor
@@ -37,11 +37,12 @@ class Test2 extends Actor
         $this->send('test2', 1);
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
+        $this->receiveBlock();
         ActorSystem::shutdown();
     }
 }
 --EXPECT--
-string(41) "Failed to serialise argument 2 of spawn()"
+string(45) "Failed to serialise the constructor arguments"
 string(31) "Failed to serialise the message"

@@ -29,6 +29,8 @@ typedef struct _ph_string_t {
     char *val;
 } ph_string_t;
 
+ph_string_t *ph_str_alloc(int len);
+ph_string_t *ph_str_create(char *s, int len);
 void ph_str_set(ph_string_t *phstr, char *s, int len);
 int ph_str_eq(ph_string_t *phstr1, ph_string_t *phstr2);
 void ph_str_value_free(ph_string_t *phstr);

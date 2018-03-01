@@ -21,6 +21,30 @@
 
 #include "src/ph_string.h"
 
+ph_string_t *ph_str_alloc(int len)
+{
+    ph_string_t *phstr = malloc(sizeof(ph_string_t));
+
+    PH_STRL_P(phstr) = len;
+
+    if (len) {
+        PH_STRV_P(phstr) = malloc(sizeof(char) * len);
+    }
+
+    return phstr;
+}
+
+ph_string_t *ph_str_create(char *s, int len)
+{
+    ph_string_t *phstr = malloc(sizeof(ph_string_t));
+
+    PH_STRL_P(phstr) = len;
+    PH_STRV_P(phstr) = malloc(sizeof(char) * len);
+    memcpy(PH_STRV_P(phstr), s, len);
+
+    return phstr;
+}
+
 void ph_str_set(ph_string_t *phstr, char *s, int len)
 {
     PH_STRL_P(phstr) = len;

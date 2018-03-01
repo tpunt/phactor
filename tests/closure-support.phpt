@@ -5,16 +5,17 @@ Enable closures to be passed as messages
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
 class Test extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
+        $message = $this->receiveBlock();
         var_dump($message());
-        $this->send($sender, $message);
+        $this->send('test2', $message);
     }
 }
 
@@ -28,16 +29,16 @@ class Test2 extends Actor
         $this->send('test', $this->func);
     }
 
-    function receive($sender, $message)
+    function receive()
     {
-        var_dump($message());
+        var_dump($this->receiveBlock()());
         var_dump(($this->func)());
         ActorSystem::shutdown();
     }
 }
 
-spawn('test', Test::class);
-spawn('test2', Test2::class);
+new ActorRef(Test::class, [], 'test');
+new ActorRef(Test2::class, [], 'test2');
 --EXPECT--
 string(3) "abc"
 string(3) "abc"

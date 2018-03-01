@@ -26,13 +26,12 @@
 #include "src/ds/ph_hashtable.h"
 
 typedef enum _ph_actor_state_t {
-    PH_ACTOR_NEW,   // not waiting - starts a fresh context
     PH_ACTOR_IDLE,  // waiting for something - needs context restoring
     PH_ACTOR_ACTIVE // in execution - prevents parallel execution of an actor
 } ph_actor_state_t;
 
 typedef struct _ph_actor_t {
-    ph_string_t ref;
+    ph_string_t *ref;
     ph_string_t *name;
     ph_queue_t mailbox;
     ph_context_t context;
@@ -42,24 +41,11 @@ typedef struct _ph_actor_t {
     zend_object obj;
 } ph_actor_t;
 
-typedef enum _ph_named_actor_state_t {
-    PH_NAMED_ACTOR_CONSTRUCTING,
-    PH_NAMED_ACTOR_ACTIVE
-} ph_named_actor_state_t;
-
-typedef struct _ph_named_actor_t {
-    // ph_string_t name; // needed?
-    ph_named_actor_state_t state;
-    int perceived_used; // for the calling code
-    ph_hashtable_t actors; // actors.lock mutex is reused for this struct
-} ph_named_actor_t;
-
-ph_actor_t *ph_actor_retrieve_from_name(ph_string_t *actor_name);
-ph_actor_t *ph_actor_retrieve_from_ref(ph_string_t *actor_ref);
+ph_actor_t *ph_actor_retrieve_from_object(zend_object *actor_obj);
+ph_actor_t *ph_actor_retrieve_from_zval(zval *actor_zval_obj);
 void ph_actor_ce_init(void);
-void ph_actor_free(ph_actor_t *actor);
+void ph_actor_free(void *actor_void);
 void ph_actor_free_dummy(void *actor_void);
-void ph_actor_remove(void *target_actor_void);
 zend_long ph_named_actor_removal(zend_string *name, zend_long count);
 zend_long ph_named_actor_total(zend_string *name);
 void ph_named_actor_remove(void *named_actor_void);

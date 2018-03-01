@@ -20,4 +20,5 @@ class Test
 new Test();
 
 $actorSystem = new ActorSystem();
+ActorSystem::shutdown();
 --EXPECT--

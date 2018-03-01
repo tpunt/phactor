@@ -24,47 +24,42 @@
 #include "src/classes/actor.h"
 
 typedef enum _ph_task_type_t {
-    PH_PROCESS_MESSAGE_TASK,
     PH_SEND_MESSAGE_TASK,
     PH_RESUME_ACTOR_TASK,
     PH_NEW_ACTOR_TASK
 } ph_task_type_t;
 
-typedef struct _ph_process_message_task_t {
-    ph_actor_t *for_actor;
-} ph_process_message_task_t;
-
 typedef struct _ph_send_message_task_t {
     ph_string_t from_actor_ref;
     ph_string_t to_actor_name;
     ph_entry_t *message;
+    int using_actor_name;
 } ph_send_message_task_t;
 
 typedef struct _ph_resume_actor_task_t {
-    ph_actor_t *actor;
+    ph_string_t actor_ref;
 } ph_resume_actor_task_t;
 
-typedef struct _ph_new_actor_task_t_t {
-    ph_string_t *named_actor_key;
-    ph_string_t class_name;
+typedef struct _ph_new_actor_task_t {
+    ph_string_t *actor_ref;
+    ph_string_t *actor_name;
+    ph_string_t actor_class;
     ph_entry_t *args;
     int argc;
-} ph_new_actor_task_t_t;
+} ph_new_actor_task_t;
 
 typedef struct _ph_task_t {
     union {
-        ph_process_message_task_t pmt;
         ph_send_message_task_t smt;
         ph_resume_actor_task_t rat;
-        ph_new_actor_task_t_t nat;
+        ph_new_actor_task_t nat;
     } u;
     ph_task_type_t type;
 } ph_task_t;
 
-ph_task_t *ph_task_create_send_message(ph_string_t *from_actor_ref, ph_string_t *to_actor_name, zval *message);
-ph_task_t *ph_task_create_process_message(ph_actor_t *for_actor);
+ph_task_t *ph_task_create_send_message(ph_string_t *from_actor_ref, ph_string_t *to_actor_name, int using_actor_name, zval *message);
 ph_task_t *ph_task_create_resume_actor(ph_actor_t *actor);
-ph_task_t *ph_task_create_new_actor(ph_string_t *named_actor_key, zend_string *class_name, zval *args, int argc);
+ph_task_t *ph_task_create_new_actor(zend_string *actor_class, zval *ctor_args, zend_string *actor_name);
 void ph_task_free(void *task_void);
 
 #endif

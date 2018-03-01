@@ -3,9 +3,9 @@ Self-sending messages via current instance.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
 class Test extends Actor
 {
@@ -14,20 +14,24 @@ class Test extends Actor
 
     public function __construct()
     {
+        $ar = ActorRef::fromActor($this);
+
         for ($i = 0; $i < self::MAX; ++$i) {
-            $this->send($this, 1);
+            $this->send($ar, 1);
         }
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
-        if (($this->counter += $message) === self::MAX) {
-            var_dump($this->counter);
-            ActorSystem::shutdown();
+        while ($this->counter !== self::MAX) {
+            $this->counter += $this->receiveBlock();
         }
+
+        var_dump($this->counter);
+        ActorSystem::shutdown();
     }
 }
 
-spawn('test', Test::class);
+new ActorRef(Test::class);
 --EXPECT--
 int(1000)

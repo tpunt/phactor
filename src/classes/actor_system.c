@@ -34,19 +34,17 @@
 #include "src/classes/actor_system.h"
 
 ph_actor_system_t *actor_system;
-__thread ph_task_t *currently_processing_task;
+__thread ph_actor_t *currently_processing_actor;
 __thread ph_thread_t *thread;
 __thread int thread_offset;
 ph_thread_t main_thread;
 
-zend_object_handlers phactor_actor_system_handlers;
-zend_class_entry *ActorSystem_ce;
+zend_object_handlers ph_ActorSystem_handlers;
+zend_class_entry *ph_ActorSystem_ce;
 
 void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
 {
     ph_message_t *message = ph_msg_create(&task->u.smt.from_actor_ref, task->u.smt.message);
-
-    assert((long)ph_actor_retrieve_from_ref(&task->u.smt.from_actor_ref) & -2);
 
     pthread_mutex_lock(&to_actor->lock);
     ph_queue_push(&to_actor->mailbox, message);
@@ -55,11 +53,7 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + to_actor->thread_offset;
 
         pthread_mutex_lock(&thread->tasks.lock);
-        if (to_actor->state == PH_ACTOR_NEW) {
-            ph_queue_push(&thread->tasks, ph_task_create_process_message(to_actor));
-        } else {
-            ph_queue_push(&thread->tasks, ph_task_create_resume_actor(to_actor));
-        }
+        ph_queue_push(&thread->tasks, ph_task_create_resume_actor(to_actor));
         pthread_mutex_unlock(&thread->tasks.lock);
     }
     pthread_mutex_unlock(&to_actor->lock);
@@ -83,41 +77,35 @@ void send_remote_message(ph_task_t *task)
 
 zend_bool send_message(ph_task_t *task)
 {
-    ph_actor_t *to_actor = ph_actor_retrieve_from_name(&task->u.smt.to_actor_name);
     zend_bool sent = 1;
+    ph_actor_t *actor;
 
-    if (to_actor) {
-        if ((ulong)to_actor == 1) { // @todo how to prevent infinite loop if actor creation fails?
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+    if (task->u.smt.using_actor_name) {
+        actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, &task->u.smt.to_actor_name);
+    } else {
+        actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &task->u.smt.to_actor_name);
+    }
+
+    if (actor) {
+        if (actor == (ph_actor_t *)1) { // Enqueue the message again, since the actor is still being created
             ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count;
 
             pthread_mutex_lock(&thread->tasks.lock);
             ph_queue_push(&thread->tasks, task);
             pthread_mutex_unlock(&thread->tasks.lock);
+
             sent = 0;
         } else {
-            send_local_message(to_actor, task);
+            send_local_message(actor, task);
         }
     } else {
-        // this is a temporary hack - in future, if we would like the ability to
-        // send to either a name or ref, then wrapper objects (ActorRef and
-        // ActorName) should be used instead
-        to_actor = ph_actor_retrieve_from_ref(&task->u.smt.to_actor_name);
-
-        if ((ulong)to_actor == 1) { // @todo how to prevent infinite loop if actor creation fails?
-            ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count;
-
-            pthread_mutex_lock(&thread->tasks.lock);
-            ph_queue_push(&thread->tasks, task);
-            pthread_mutex_unlock(&thread->tasks.lock);
-            sent = 0;
-        } else {
-            if (to_actor) {
-                send_local_message(to_actor, task);
-            } else {
-                send_remote_message(task);
-            }
-        }
+        // Actor either didn't exist or no longer exists
+        // @todo Perhaps implement logging or something for this scenario?
+        // How to see if this is a remote actor? This is where ActorRef
+        // objects would come into play
     }
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
     return sent;
 }
@@ -146,14 +134,13 @@ void resume_actor(ph_actor_t *actor)
 #endif
 }
 
-void new_actor(ph_task_t *task)
+ph_actor_t *new_actor(ph_task_t *task)
 {
-    ph_string_t class_name = task->u.nat.class_name;
-    zend_string *class = zend_string_init(PH_STRV(class_name), PH_STRL(class_name), 0);
+    ph_string_t actor_class = task->u.nat.actor_class;
+    zend_string *class = zend_string_init(PH_STRV(actor_class), PH_STRL(actor_class), 0);
     zend_class_entry *ce = zend_fetch_class_by_name(class, NULL, ZEND_FETCH_CLASS_DEFAULT | ZEND_FETCH_CLASS_EXCEPTION);
     ph_entry_t *args = task->u.nat.args;
     int argc = task->u.nat.argc;
-    zend_function *constructor;
     zval zobj;
 
     PHACTOR_ZG(allowed_to_construct_object) = 1;
@@ -165,66 +152,45 @@ void new_actor(ph_task_t *task)
         zend_throw_exception_ex(zend_ce_exception, 0, "Failed to create an actor from class '%s'\n", ZSTR_VAL(class));
         zend_string_free(class);
         PHACTOR_ZG(allowed_to_construct_object) = 0;
-        return;
+        return NULL;
     }
 
     PHACTOR_ZG(allowed_to_construct_object) = 0;
 
-    ph_actor_t *new_actor = (ph_actor_t *)((char *)Z_OBJ(zobj) - Z_OBJ(zobj)->handlers->offset);
-    ph_string_t *named_actor_key = task->u.nat.named_actor_key;
+    ph_actor_t *new_actor = ph_actor_retrieve_from_object(Z_OBJ(zobj));
+    ph_string_t *actor_name = task->u.nat.actor_name;
+    ph_string_t *actor_ref = task->u.nat.actor_ref;
 
     // @todo what are the technical reasons for not doing this in phactor_actor_ctor?
     zend_vm_stack_init();
     ph_vmcontext_get(&new_actor->context.vmc);
 
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->named_actors.lock);
-    ph_named_actor_t *named_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->named_actors, named_actor_key);
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-    if (!named_actor) { // quite unexpected
-        // Occurs if an actor is spawn()ed and then remove()d before the new
-        // thread has a chance to create it.
-        pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
-        ph_actor_free(new_actor);
+    assert(ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref) == (ph_actor_t *)1);
+
+    if (actor_name && ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, actor_name) != (ph_actor_t *)1) {
+        zend_throw_exception_ex(zend_ce_exception, 0, "An actor with the name '%s' already exists\n", PH_STRV_P(actor_name));
         zend_string_free(class);
-        return;
-    }
-
-    pthread_mutex_lock(&named_actor->actors.lock);
-    if (named_actor->actors.used == named_actor->perceived_used) { // quite unexpected
-        // Occurs if multiple actors are spawn()ed, and then multiple actors
-        // (but not all of them) are remove()d before they have all been
-        // created. This leaves more new actor tasks that have still yet to be
-        // created than the perceived_used count of a named actor. So we have to
-        // discard them.
-        pthread_mutex_unlock(&named_actor->actors.lock);
-        pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
         ph_actor_free(new_actor);
-        zend_string_free(class);
-        return;
+        return NULL;
     }
 
-    new_actor->name = named_actor_key;
-    pthread_mutex_unlock(&named_actor->actors.lock);
+    new_actor->name = actor_name;
+    new_actor->ref = actor_ref;
 
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors.lock);
-    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors, &new_actor->ref, new_actor);
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors.lock);
+    ph_hashtable_update(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref, new_actor);
 
-    pthread_mutex_lock(&named_actor->actors.lock);
-    ph_hashtable_insert(&named_actor->actors, &new_actor->ref, new_actor);
-
-    if (named_actor->state == PH_NAMED_ACTOR_CONSTRUCTING) {
-        named_actor->state = PH_NAMED_ACTOR_ACTIVE;
+    if (actor_name) {
+        ph_hashtable_update(&PHACTOR_G(actor_system)->actors_by_name, actor_name, new_actor);
     }
-    pthread_mutex_unlock(&named_actor->actors.lock);
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->named_actors.lock);
-
-    constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
+    zend_function *constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
 
     if (constructor) {
         int result;
-        zval retval, zargs[argc];
+        zval retval, zargs[argc]; // @todo VLAs are not supported by MSVC compiler
         zend_fcall_info fci;
 
         for (int i = 0; i < argc; ++i) {
@@ -246,7 +212,7 @@ void new_actor(ph_task_t *task)
                 // same as problem above?
                 zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(class), "::", "__construct");
                 zend_string_free(class);
-                return;
+                return NULL;
             }
         }
 
@@ -255,6 +221,8 @@ void new_actor(ph_task_t *task)
     }
 
     zend_string_free(class);
+
+    return new_actor;
 }
 
 void perform_actor_removals(void)
@@ -264,44 +232,20 @@ void perform_actor_removals(void)
     pthread_mutex_lock(&actor_removals->lock);
 
     while (ph_vector_size(actor_removals)) {
-        ph_actor_remove(ph_vector_pop(actor_removals));
+        ph_actor_free(ph_vector_pop(actor_removals));
     }
 
     pthread_mutex_unlock(&actor_removals->lock);
 }
 
-static void handle_actor_next_action(ph_actor_t *actor)
-{
-    pthread_mutex_lock(&actor->lock);
-    if (actor->state == PH_ACTOR_ACTIVE) {
-        // Actor has finished executing (if it became blocked, then
-        // its state would currently be idle). Its state now needs
-        // to be updated (to new), and if it has any messages in its
-        // mailbox, then it needs to be rescheduled.
-        ph_mcontext_reset(&actor->context.mc);
-
-        if (ph_queue_size(&actor->mailbox)) {
-            ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
-            ph_task_t *task = ph_task_create_process_message(actor);
-
-            pthread_mutex_lock(&thread->tasks.lock);
-            ph_queue_push(&thread->tasks, task);
-            pthread_mutex_unlock(&thread->tasks.lock);
-        }
-
-        actor->state = PH_ACTOR_NEW;
-    }
-    pthread_mutex_unlock(&actor->lock);
-}
-
-void message_handling_loop(void)
+void message_handling_loop(ph_thread_t *ph_thread)
 {
     while (1) {
         perform_actor_removals();
 
-        pthread_mutex_lock(&PH_THREAD_G(tasks).lock);
-        ph_task_t *current_task = ph_queue_pop(&PH_THREAD_G(tasks));
-        pthread_mutex_unlock(&PH_THREAD_G(tasks).lock);
+        pthread_mutex_lock(&ph_thread->tasks.lock);
+        ph_task_t *current_task = ph_queue_pop(&ph_thread->tasks);
+        pthread_mutex_unlock(&ph_thread->tasks.lock);
 
         if (!current_task) {
             pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
@@ -321,24 +265,25 @@ void message_handling_loop(void)
                     continue;
                 }
                 break;
-            case PH_PROCESS_MESSAGE_TASK:
-                currently_processing_task = current_task; // tls for the currently processing actor
-                ph_actor_t *for_actor = current_task->u.pmt.for_actor;
-
-                process_message(for_actor);
-                handle_actor_next_action(for_actor);
-                break;
             case PH_RESUME_ACTOR_TASK:
-                pthread_mutex_lock(&current_task->u.rat.actor->lock);
-                ph_actor_t *actor = current_task->u.rat.actor;
-                actor->state = PH_ACTOR_ACTIVE;
-                pthread_mutex_unlock(&current_task->u.rat.actor->lock);
+                {
+                    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &current_task->u.rat.actor_ref);
 
-                resume_actor(actor);
-                handle_actor_next_action(actor);
+                    assert(actor && actor != (ph_actor_t *)1); // may change in future
+
+                    pthread_mutex_lock(&actor->lock);
+                    actor->state = PH_ACTOR_ACTIVE;
+                    pthread_mutex_unlock(&actor->lock);
+
+                    resume_actor(actor);
+                }
                 break;
             case PH_NEW_ACTOR_TASK:
-                new_actor(current_task);
+                currently_processing_actor = new_actor(current_task);
+
+                if (currently_processing_actor) {
+                    process_message(currently_processing_actor);
+                }
         }
 
         free(current_task);
@@ -369,7 +314,7 @@ void *worker_function(ph_thread_t *ph_thread)
 
     ph_vmcontext_get(&ph_thread->context.vmc);
 
-    message_handling_loop();
+    message_handling_loop(ph_thread);
 
     PG(report_memleaks) = 0;
 
@@ -419,11 +364,10 @@ void initialise_actor_system(zend_long thread_count)
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + i;
 
         thread->offset = i;
-        pthread_mutex_init(&thread->ph_task_mutex, NULL);
         ph_queue_init(&thread->tasks, ph_task_free);
-        ph_vector_init(PHACTOR_G(actor_system)->actor_removals + i, 4, ph_actor_remove);
 
         if (i != PHACTOR_G(actor_system)->thread_count) {
+            ph_vector_init(PHACTOR_G(actor_system)->actor_removals + i, 4, ph_actor_free);
             pthread_create(&thread->pthread, NULL, (void *) worker_function, thread);
         }
     }
@@ -469,21 +413,14 @@ void scheduler_blocking()
         return;
     }
 
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
-    if (!PHACTOR_G(actor_system)->shutdown) {
-        PHACTOR_G(actor_system)->shutdown = !PHACTOR_G(actor_system)->daemonised;
-    }
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
-
     // @todo use own specialised loop here? Only messages should need to be
     // handled in the main thread (for now)
-    message_handling_loop();
+    message_handling_loop(PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count);
 
     while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->finished_thread_count);
 
-    ph_hashtable_destroy(&PHACTOR_G(actor_system)->named_actors);
-
-    // perform_actor_removals(); // shouldn't be needed
+    ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors_by_name);
+    ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors_by_ref);
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
     ++PHACTOR_G(actor_system)->finished_thread_count;
@@ -492,7 +429,6 @@ void scheduler_blocking()
     for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + i;
 
-        pthread_mutex_destroy(&thread->ph_task_mutex);
         ph_queue_destroy(&thread->tasks);
         pthread_join(thread->pthread, NULL);
     }
@@ -507,13 +443,13 @@ static zend_object* phactor_actor_system_ctor(zend_class_entry *entry)
 
         // @todo create the UUID on actor creation - this is needed for remote actor systems only
 
-        ph_hashtable_init(&PHACTOR_G(actor_system)->actors, 8, ph_actor_free_dummy);
-        ph_hashtable_init(&PHACTOR_G(actor_system)->named_actors, 8, ph_named_actor_remove);
+        ph_hashtable_init(&PHACTOR_G(actor_system)->actors_by_ref, 64, ph_actor_mark_for_removal);
+        ph_hashtable_init(&PHACTOR_G(actor_system)->actors_by_name, 64, ph_actor_free_dummy);
 
         zend_object_std_init(&PHACTOR_G(actor_system)->obj, entry);
         object_properties_init(&PHACTOR_G(actor_system)->obj, entry);
 
-        PHACTOR_G(actor_system)->obj.handlers = &phactor_actor_system_handlers;
+        PHACTOR_G(actor_system)->obj.handlers = &ph_ActorSystem_handlers;
         PHACTOR_G(actor_system)->thread_count = sysconf(_SC_NPROCESSORS_ONLN) + ASYNC_THREAD_COUNT;
     }
 
@@ -527,23 +463,17 @@ void php_actor_system_dtor_object(zend_object *obj)
 
 void php_actor_system_free_object(zend_object *obj)
 {
-    ZEND_ASSERT(!PHACTOR_G(actor_system)->actors.used);
-
-    for (int i = 0; i <= PHACTOR_G(actor_system)->thread_count; ++i) {
+    for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
         ph_vector_destroy(PHACTOR_G(actor_system)->actor_removals + i);
     }
 
     pthread_mutex_destroy(&PHACTOR_G(actor_system)->lock);
-    pthread_mutex_destroy(&PHACTOR_G(actor_system)->worker_threads[PHACTOR_G(actor_system)->thread_count].ph_task_mutex);
 
     free(PHACTOR_G(actor_system)->worker_threads);
     free(PHACTOR_G(actor_system)->actor_removals);
-    ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors);
-    // PHACTOR_G(actor_system)->named_actors is already destroyed
 }
 
 ZEND_BEGIN_ARG_INFO(ActorSystem_construct_arginfo, 0)
-    ZEND_ARG_INFO(0, daemonised)
     ZEND_ARG_INFO(0, thread_count)
 ZEND_END_ARG_INFO()
 
@@ -551,9 +481,8 @@ PHP_METHOD(ActorSystem, __construct)
 {
     zend_long thread_count = PHACTOR_G(actor_system)->thread_count;
 
-    ZEND_PARSE_PARAMETERS_START(0, 2)
+    ZEND_PARSE_PARAMETERS_START(0, 1)
         Z_PARAM_OPTIONAL
-        Z_PARAM_BOOL(PHACTOR_G(actor_system)->daemonised)
         Z_PARAM_LONG(thread_count)
     ZEND_PARSE_PARAMETERS_END();
 
@@ -590,7 +519,6 @@ PHP_METHOD(ActorSystem, shutdown)
 ZEND_BEGIN_ARG_INFO(ActorSystem_block_arginfo, 0)
 ZEND_END_ARG_INFO()
 
-
 PHP_METHOD(ActorSystem, block)
 {
     if (zend_parse_parameters_none() != SUCCESS) {
@@ -607,21 +535,21 @@ zend_function_entry ActorSystem_methods[] = {
     PHP_FE_END
 };
 
-void actor_system_ce_init(void)
+void ph_actor_system_ce_init(void)
 {
     zend_class_entry ce;
     zend_object_handlers *zh = zend_get_std_object_handlers();
 
     INIT_CLASS_ENTRY(ce, "phactor\\ActorSystem", ActorSystem_methods);
-    ActorSystem_ce = zend_register_internal_class(&ce);
-    ActorSystem_ce->create_object = phactor_actor_system_ctor;
-    ActorSystem_ce->ce_flags |= ZEND_ACC_FINAL;
-    ActorSystem_ce->serialize = zend_class_serialize_deny;
-    ActorSystem_ce->unserialize = zend_class_unserialize_deny;
+    ph_ActorSystem_ce = zend_register_internal_class(&ce);
+    ph_ActorSystem_ce->create_object = phactor_actor_system_ctor;
+    ph_ActorSystem_ce->ce_flags |= ZEND_ACC_FINAL;
+    ph_ActorSystem_ce->serialize = zend_class_serialize_deny;
+    ph_ActorSystem_ce->unserialize = zend_class_unserialize_deny;
 
-    memcpy(&phactor_actor_system_handlers, zh, sizeof(zend_object_handlers));
+    memcpy(&ph_ActorSystem_handlers, zh, sizeof(zend_object_handlers));
 
-    phactor_actor_system_handlers.offset = XtOffsetOf(ph_actor_system_t, obj);
-    phactor_actor_system_handlers.dtor_obj = php_actor_system_dtor_object;
-    phactor_actor_system_handlers.free_obj = php_actor_system_free_object;
+    ph_ActorSystem_handlers.offset = XtOffsetOf(ph_actor_system_t, obj);
+    ph_ActorSystem_handlers.dtor_obj = php_actor_system_dtor_object;
+    ph_ActorSystem_handlers.free_obj = php_actor_system_free_object;
 }

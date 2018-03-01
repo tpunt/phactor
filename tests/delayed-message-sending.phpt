@@ -3,30 +3,30 @@ Ensure message sending is correctly delayed if an actor is still being spawned.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$as = new ActorSystem(true);
+$as = new ActorSystem();
 
 class A extends Actor
 {
     public function __construct()
     {
-        spawn('B', B::class);
+        new ActorRef(B::class, [], 'B');
         $this->send('B', 1);
     }
 
-    public function receive($sender, $message){}
+    public function receive(){}
 }
 
 class B extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
-        var_dump($message);
+        var_dump($this->receiveBlock());
         ActorSystem::shutdown();
     }
 }
 
-spawn('A', A::class);
+new ActorRef(A::class, [], 'A');
 --EXPECT--
 int(1)

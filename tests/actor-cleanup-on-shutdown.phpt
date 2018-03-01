@@ -6,33 +6,33 @@ actors in the main PHP thread.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
 class TestA extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
-        spawn('testa3', TestA::class);
+        $this->receiveBlock();
+        new ActorRef(TestA::class, [], 'testa3');
         ActorSystem::shutdown();
     }
 }
 
-spawn('testa1', TestA::class);
-spawn('testb1', TestB::class);
+new ActorRef(TestB::class, [], 'testb1');
 
 class TestB extends Actor
 {
     public function __construct()
     {
-        spawn('testa2', TestA::class);
+        new ActorRef(TestA::class, [], 'testa2');
         $this->send('testb1', 1);
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
-        spawn('testb2', TestA::class);
+        $this->receiveBlock();
         $this->send('testa2', 1);
     }
 }

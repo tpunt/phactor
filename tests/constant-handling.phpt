@@ -5,11 +5,11 @@ Ensure that constants are correctly handled.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
 const A = [1,2,3];
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
 const B = [4,5,6];
 
@@ -20,11 +20,12 @@ class Test extends Actor
     public function __construct()
     {
         var_dump(self::C);
-        spawn('test2', Test2::class);
+        new ActorRef(Test2::class, [ActorRef::fromActor($this)], 'test2');
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
+        [$sender, $message] = $this->receiveBlock();
         var_dump(A);
         var_dump(defined('B') ? B : "Constant 'B' not found");
         var_dump(self::C, $message);
@@ -36,14 +37,15 @@ class Test2 extends Actor
 {
     const D = [10,11,12];
 
-    public function __construct()
+    public function __construct(ActorRef $ar)
     {
         var_dump(self::D);
-        $this->send('test', self::D);
+        $this->send($ar, [ActorRef::fromActor($this)->getName(), self::D]);
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
+        $message = $this->receiveBlock();
         var_dump(A);
         var_dump(defined('B') ? B : "Constant 'B' not found");
         var_dump(self::D, $message);
@@ -51,7 +53,7 @@ class Test2 extends Actor
     }
 }
 
-spawn('test', Test::class);
+new ActorRef(Test::class, [], 'test');
 --EXPECT--
 array(3) {
   [0]=>

@@ -5,14 +5,15 @@ This is not safe to do, and so it is prevented.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor};
 
 $actorSystem = new ActorSystem();
 
 try {
-    new class extends Actor {public function receive($sender, $message){}};
+    new class extends Actor {public function receive(){}};
 } catch (Error $e) {
     echo $e->getMessage();
 }
---EXPECTF--
-Actors cannot be created via class instantiation - please use spawn() instead
+ActorSystem::shutdown();
+--EXPECT--
+Actors cannot be created via class instantiation - create an ActorRef object instead

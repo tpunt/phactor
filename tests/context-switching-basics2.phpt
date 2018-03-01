@@ -3,21 +3,21 @@ Stackful context switching on the Zend VM.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$as = new ActorSystem(true, 1);
+$as = new ActorSystem(1);
 
 class A extends Actor
 {
     public function __construct()
     {
-        $this->send($this, 1);
+        $this->send(ActorRef::fromActor($this), 1);
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
-        var_dump($message); // int(1)
-        $this->send('B', 2);
+        var_dump($this->receiveBlock()); // int(1)
+        $this->send('B', ['A', 2]);
         var_dump($this->sub1()); // int(3)
         $this->send('B', 4);
     }
@@ -35,8 +35,9 @@ class A extends Actor
 
 class B extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
+        [$sender, $message] = $this->receiveBlock();
         var_dump($message); // int(2)
         $this->send($sender, 3);
         $this->sub1();
@@ -54,8 +55,8 @@ class B extends Actor
     }
 }
 
-spawn('B', B::class);
-spawn('A', A::class);
+new ActorRef(B::class, [], 'B');
+new ActorRef(A::class, [], 'A');
 --EXPECT--
 int(1)
 int(2)

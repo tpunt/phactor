@@ -3,7 +3,7 @@ Ensure correct copying of local static variables.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
 const A = 1;
 
@@ -16,8 +16,8 @@ class Test extends Actor
         static $a = A;
         static $b = A . A;
     }
-    public function receive($sender, $message) {}
+    public function receive() {ActorSystem::shutdown();}
 }
 
-spawn('test', Test::class);
+new ActorRef(Test::class, [], 'test');
 --EXPECT--

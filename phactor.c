@@ -25,9 +25,9 @@
 #include <ext/standard/info.h>
 
 #include "php_phactor.h"
-#include "src/ph_functions.h"
 #include "src/classes/actor_system.h"
 #include "src/classes/actor.h"
+#include "src/classes/actor_ref.h"
 
 #ifndef ZTS
 # error "Zend Thread Safety (ZTS) mode is required"
@@ -43,8 +43,9 @@ ZEND_DECLARE_MODULE_GLOBALS(phactor)
 
 PHP_MINIT_FUNCTION(phactor)
 {
-    actor_system_ce_init();
+    ph_actor_system_ce_init();
     ph_actor_ce_init();
+    ph_actor_ref_ce_init();
 
     pthread_mutex_init(&global_actor_id_lock, NULL);
 
@@ -85,7 +86,7 @@ PHP_MINFO_FUNCTION(phactor)
 zend_module_entry phactor_module_entry = {
     STANDARD_MODULE_HEADER,
     "phactor",
-    phactor_functions,
+    NULL,
     PHP_MINIT(phactor),
     PHP_MSHUTDOWN(phactor),
     PHP_RINIT(phactor),

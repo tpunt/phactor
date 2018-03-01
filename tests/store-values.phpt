@@ -5,15 +5,15 @@ Ensure that different values are correctly handled by the store.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
 class Test extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
-        var_dump($message);
+        var_dump($this->receiveBlock());
         ActorSystem::shutdown();
     }
 }
@@ -31,11 +31,11 @@ class Test2 extends Actor
         $this->send('test', [$this->a, $this->b, $this->c, $this->d, $this->e]);
     }
 
-    public function receive($sender, $message) {}
+    public function receive() {}
 }
 
-spawn('test', Test::class);
-spawn('test2', Test2::class);
+new ActorRef(Test::class, [], 'test');
+new ActorRef(Test2::class, [], 'test2');
 --EXPECT--
 array(5) {
   [0]=>

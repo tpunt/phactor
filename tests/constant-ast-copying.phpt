@@ -6,11 +6,11 @@ the zval ast value.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
 const Z = 1;
 
-$actorSystem = new ActorSystem(true);
+$actorSystem = new ActorSystem();
 
 class A
 {
@@ -22,19 +22,14 @@ class A
 
 class Test extends Actor
 {
-    public function __construct()
-    {
-        $this->send($this, 1);
-    }
-
-    public function receive($sender, $message)
+    public function receive()
     {
         A::B();
         ActorSystem::shutdown();
     }
 }
 
-spawn('test', Test::class);
+new ActorRef(Test::class, [], 'test');
 --EXPECT--
 int(1)
 string(2) "11"

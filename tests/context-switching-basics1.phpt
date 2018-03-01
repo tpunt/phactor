@@ -3,19 +3,20 @@ Stackless context switching on the Zend VM.
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, function spawn};
+use phactor\{ActorSystem, Actor, ActorRef};
 
-$actorSystem = new ActorSystem(true, 1);
+$actorSystem = new ActorSystem(1);
 
-spawn('test', Test::class);
-spawn('test2', Test2::class);
+$ar = new ActorRef(Test::class, [], 'test');
+new ActorRef(Test2::class, [$ar], 'test2');
 
 class Test extends Actor
 {
-    public function receive($sender, $message)
+    public function receive()
     {
+        [$sender, $message] = $this->receiveBlock();
         var_dump($message);
-        $this->send($sender, 2);
+        $this->send($sender, [ActorRef::fromActor($this), 2]);
         var_dump($this->receiveBlock());
         var_dump($message);
         $this->send($sender, 4);
@@ -24,15 +25,14 @@ class Test extends Actor
 
 class Test2 extends Actor
 {
-    private $workers;
-
-    public function __construct()
+    public function __construct(ActorRef $ar)
     {
-        $this->send('test', 1);
+        $this->send($ar, [ActorRef::fromActor($this), 1]);
     }
 
-    public function receive($sender, $message)
+    public function receive()
     {
+        [$sender, $message] = $this->receiveBlock();
         var_dump($message);
         $this->send($sender, 3);
         var_dump($this->receiveBlock());
