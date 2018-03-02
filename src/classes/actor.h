@@ -30,19 +30,27 @@ typedef enum _ph_actor_state_t {
     PH_ACTOR_ACTIVE // in execution - prevents parallel execution of an actor
 } ph_actor_state_t;
 
-typedef struct _ph_actor_t {
+typedef struct _ph_actor_internal_t {
     ph_string_t *ref;
+    ph_context_t context;
+    int thread_offset;
+    zend_object obj;
+} ph_actor_internal_t;
+
+typedef struct _ph_actor_t {
     ph_string_t *name;
     ph_queue_t mailbox;
-    ph_context_t context;
     ph_actor_state_t state;
-    int thread_offset;
-    pthread_mutex_t lock;
-    zend_object obj;
+    struct _ph_actor_t *supervisor;
+    ph_hashtable_t *workers;
+    pthread_mutex_t lock; // @todo remove this and just reused mailbox lock
+    ph_actor_internal_t *internal;
 } ph_actor_t;
 
+ph_actor_internal_t *ph_actor_internal_retrieve_from_object(zend_object *actor_obj);
 ph_actor_t *ph_actor_retrieve_from_object(zend_object *actor_obj);
 ph_actor_t *ph_actor_retrieve_from_zval(zval *actor_zval_obj);
+ph_actor_t *ph_actor_create(void);
 void ph_actor_ce_init(void);
 void ph_actor_free(void *actor_void);
 void ph_actor_free_dummy(void *actor_void);
@@ -50,5 +58,6 @@ zend_long ph_named_actor_removal(zend_string *name, zend_long count);
 zend_long ph_named_actor_total(zend_string *name);
 void ph_named_actor_remove(void *named_actor_void);
 void ph_actor_mark_for_removal(void *actor_void);
+int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_actor_name);
 
 #endif

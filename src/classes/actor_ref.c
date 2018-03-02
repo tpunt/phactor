@@ -39,7 +39,6 @@ int global_actor_id;
 // @todo actually generate UUIDs for remote actors
 static void ph_actor_ref_set(ph_string_t *ref)
 {
-    ref->len = ACTOR_REF_LEN;
     pthread_mutex_lock(&global_actor_id_lock);
     sprintf(ref->val, "%022d%010d", 0, ++global_actor_id);
     pthread_mutex_unlock(&global_actor_id_lock);
@@ -76,11 +75,6 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
         return;
     }
 
-    // @todo is this needed - we fetch the class entry in the calling routine
-    // if (!zend_fetch_class_by_name(actor_class, NULL, ZEND_FETCH_CLASS_DEFAULT | ZEND_FETCH_CLASS_EXCEPTION)) {
-    //     return 0;
-    // }
-
     ph_task_t *task = ph_task_create_new_actor(actor_class, ctor_args, actor_name);
 
     if (!task) {
@@ -92,9 +86,11 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
     task->u.nat.actor_ref = ph_str_alloc(ACTOR_REF_LEN);
     ph_actor_ref_set(task->u.nat.actor_ref);
 
+    ph_actor_t *new_actor = ph_actor_create();
+
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     if (actor_name) {
-        if (ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, task->u.nat.actor_name)) {
+        if (ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, task->u.nat.actor_name)) {
             zend_throw_exception(zend_ce_error, "An actor with the specified name has already been created", 0);
             free(task->u.nat.actor_ref);
             free(task->u.nat.actor_name);
@@ -102,10 +98,10 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
             return;
         }
 
-        ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_name, task->u.nat.actor_name, (ph_actor_t *)1);
+        ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_name, task->u.nat.actor_name, new_actor);
     }
 
-    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, task->u.nat.actor_ref, (ph_actor_t *)1);
+    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, task->u.nat.actor_ref, new_actor);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
     int thread_offset = php_mt_rand_range(0, PHACTOR_G(actor_system)->thread_count - 1);
@@ -216,7 +212,7 @@ PHP_METHOD(ActorRef, fromActor)
         zval zref, value;
 
         ZVAL_STR(&zref, ref);
-        ZVAL_STRINGL(&value, PH_STRV_P(actor->ref), PH_STRL_P(actor->ref));
+        ZVAL_STRINGL(&value, PH_STRV_P(actor->internal->ref), PH_STRL_P(actor->internal->ref));
 
         zend_std_write_property(&zobj, &zref, &value, NULL);
         zend_string_free(ref);
@@ -261,5 +257,7 @@ void ph_actor_ref_ce_init(void)
     ph_ActorRef_handlers.write_property = ph_actor_ref_write_property;
 
     zend_declare_property_string(ph_ActorRef_ce, ZEND_STRL("ref"), "", ZEND_ACC_PROTECTED);
+    Z_TYPE_INFO_P(ph_ActorRef_ce->default_properties_table) = IS_INTERNED_STRING_EX; // RCs on default property values??
     zend_declare_property_string(ph_ActorRef_ce, ZEND_STRL("name"), "", ZEND_ACC_PROTECTED);
+    Z_TYPE_INFO_P(ph_ActorRef_ce->default_properties_table + 1) = IS_INTERNED_STRING_EX; // RCs on default property values??
 }

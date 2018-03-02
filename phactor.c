@@ -28,6 +28,7 @@
 #include "src/classes/actor_system.h"
 #include "src/classes/actor.h"
 #include "src/classes/actor_ref.h"
+#include "src/classes/supervisor.h"
 
 #ifndef ZTS
 # error "Zend Thread Safety (ZTS) mode is required"
@@ -46,6 +47,7 @@ PHP_MINIT_FUNCTION(phactor)
     ph_actor_system_ce_init();
     ph_actor_ce_init();
     ph_actor_ref_ce_init();
+    ph_supervisor_ce_init();
 
     pthread_mutex_init(&global_actor_id_lock, NULL);
 

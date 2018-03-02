@@ -33,9 +33,23 @@ extern zend_class_entry *ph_ActorRef_ce;
 zend_object_handlers ph_Actor_handlers;
 zend_class_entry *ph_Actor_ce;
 
+ph_actor_internal_t *ph_actor_internal_retrieve_from_object(zend_object *actor_obj)
+{
+    return (ph_actor_internal_t *)((char *)actor_obj - actor_obj->handlers->offset);
+}
+
 ph_actor_t *ph_actor_retrieve_from_object(zend_object *actor_obj)
 {
-    return (ph_actor_t *)((char *)actor_obj - XtOffsetOf(ph_actor_t, obj));
+    ph_string_t *ref = ph_actor_internal_retrieve_from_object(actor_obj)->ref;
+    ph_actor_t *actor;
+
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+    actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, ref);
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+
+    assert(actor);
+
+    return actor;
 }
 
 ph_actor_t *ph_actor_retrieve_from_zval(zval *actor_zval_obj)
@@ -46,11 +60,18 @@ ph_actor_t *ph_actor_retrieve_from_zval(zval *actor_zval_obj)
 void ph_actor_mark_for_removal(void *actor_void)
 {
     ph_actor_t *actor = actor_void;
-    ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->thread_offset;
 
-    pthread_mutex_lock(&actor_removals->lock);
-    ph_vector_push(actor_removals, actor);
-    pthread_mutex_unlock(&actor_removals->lock);
+    if (!actor->internal) {
+        // this can happen when the actor system is shutting down, but new
+        // actors are still being created (they never become fully created)
+        ph_actor_free(actor_void);
+    } else {
+        ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->internal->thread_offset;
+
+        pthread_mutex_lock(&actor_removals->lock);
+        ph_vector_push(actor_removals, actor);
+        pthread_mutex_unlock(&actor_removals->lock);
+    }
 }
 
 static void ph_actor_dtor_object_dummy(zend_object *obj){}
@@ -64,21 +85,87 @@ static void ph_actor_dtor_object(zend_object *obj)
 
 void ph_actor_free_dummy(void *actor_void){}
 
-void ph_actor_free(void *actor_void)
+void ph_actor_internal_free(ph_actor_internal_t *actor_internal)
 {
-    ph_actor_t *actor = actor_void;
     ph_vmcontext_t vmc;
 
-    ph_vmcontext_swap(&vmc, &actor->context.vmc);
+    ph_vmcontext_swap(&vmc, &actor_internal->context.vmc);
     zend_vm_stack_destroy();
     ph_vmcontext_set(&vmc);
 
-    ph_mcontext_free(&actor->context.mc);
+    ph_mcontext_free(&actor_internal->context.mc);
 
-    ph_actor_dtor_object(&actor->obj);
+    // @todo free actor_internal->ref ?
+
+    ph_actor_dtor_object(&actor_internal->obj); // @todo why here and not as an object handler?
+
+    efree(actor_internal);
+}
+
+void ph_actor_free(void *actor_void)
+{
+    ph_actor_t *actor = actor_void;
 
     pthread_mutex_destroy(&actor->lock);
-    efree(actor);
+
+    if (actor->workers) {
+        ph_hashtable_destroy(actor->workers);
+    }
+
+    ph_queue_destroy(&actor->mailbox);
+
+    // @todo free actor->name ?
+
+    // see comment in ph_actor_mark_for_removal
+    if (actor->internal) {
+        ph_actor_internal_free(actor->internal);
+    }
+}
+
+int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_actor_name)
+{
+    if (Z_TYPE_P(to_actor) == IS_STRING) {
+        ph_str_set(to_actor_name, Z_STRVAL_P(to_actor), Z_STRLEN_P(to_actor));
+        *using_actor_name = 1;
+
+        return 1;
+    }
+
+    if (Z_TYPE_P(to_actor) == IS_OBJECT && instanceof_function(Z_OBJCE_P(to_actor), ph_ActorRef_ce)) {
+        zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);
+        zval zref, *value;
+        zend_class_entry *fake_scope = EG(fake_scope);
+
+        ZVAL_STR(&zref, ref);
+
+        // fake the scope so that we can fetch the private property
+        EG(fake_scope) = ph_ActorRef_ce;
+
+        value = std_object_handlers.read_property(to_actor, &zref, BP_VAR_IS, NULL, NULL);
+
+        EG(fake_scope) = fake_scope;
+
+        zend_string_free(ref);
+
+        ph_str_set(to_actor_name, Z_STRVAL_P(value), Z_STRLEN_P(value));
+        *using_actor_name = 0;
+
+        return 1;
+    }
+
+    return 0;
+}
+
+ph_actor_t *ph_actor_create(void)
+{
+    ph_actor_t *new_actor = calloc(1, sizeof(ph_actor_t));
+
+    new_actor->state = PH_ACTOR_ACTIVE;
+
+    ph_queue_init(&new_actor->mailbox, ph_msg_free);
+    pthread_mutex_init(&new_actor->lock, NULL);
+
+    return new_actor;
 }
 
 static void receive_block(zval *actor_zval, zval *return_value)
@@ -91,12 +178,12 @@ static void receive_block(zval *actor_zval, zval *return_value)
     }
 
     pthread_mutex_lock(&actor->lock);
-    ph_vmcontext_swap(&actor->context.vmc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.vmc);
+    ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.vmc);
     actor->state = PH_ACTOR_IDLE;
 
     // @todo possible optimisation: if task queue is empty, just skip the next 7 lines
     if (ph_queue_size(&actor->mailbox)) { // @todo check send_local_message to see if this conflicts with it
-        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
+        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->internal->thread_offset;
         ph_task_t *task = ph_task_create_resume_actor(actor);
 
         pthread_mutex_lock(&thread->tasks.lock);
@@ -106,10 +193,10 @@ static void receive_block(zval *actor_zval, zval *return_value)
     pthread_mutex_unlock(&actor->lock);
 
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_swap(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+    ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 #else
-    ph_mcontext_interrupt(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
-    // ph_mcontext_swap(&actor->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, 1);
+    ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+    // ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, 1);
 #endif
 
     pthread_mutex_lock(&actor->lock);
@@ -121,10 +208,10 @@ static void receive_block(zval *actor_zval, zval *return_value)
     ph_msg_free(message);
 }
 
-void process_message_handler()
+void process_message_handler(void)
 {
     ph_actor_t *actor = currently_processing_actor;
-    zend_object *object = &actor->obj; // from tls
+    zend_object *object = &actor->internal->obj; // from tls
     zend_function *receive_function;
     zend_fcall_info fci;
     zval retval;
@@ -138,7 +225,18 @@ void process_message_handler()
     fci.no_separation = 1;
     ZVAL_STRINGL(&fci.function_name, "receive", sizeof("receive")-1);
 
+    zend_execute_data *old_execute_data = EG(current_execute_data);
+    EG(current_execute_data) = ecalloc(1, sizeof(zend_execute_data));
+
     result = zend_call_function(&fci, NULL);
+
+    efree(EG(current_execute_data));
+    EG(current_execute_data) = old_execute_data;
+
+    if (EG(exception)) {
+        // @todo log it/notify a supervisor to take action (restart the actor, etc)
+        EG(exception) = NULL;
+    }
 
     if (result == FAILURE && !EG(exception)) {
         zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object->ce->name), "::", "receive");
@@ -151,7 +249,7 @@ void process_message_handler()
     if (actor->name) {
         ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_name, actor->name);
     }
-    ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_ref, actor->ref);
+    ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_ref, actor->internal->ref);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
 #ifdef PH_FIXED_STACK_SIZE
@@ -161,31 +259,31 @@ void process_message_handler()
 
 zend_object* phactor_actor_ctor(zend_class_entry *entry)
 {
-    ph_actor_t *new_actor = ecalloc(1, sizeof(ph_actor_t) + zend_object_properties_size(entry));
+    ph_actor_internal_t *actor_internal = ecalloc(1, sizeof(ph_actor_internal_t) + zend_object_properties_size(entry));
 
-    new_actor->thread_offset = thread_offset;
+    actor_internal->thread_offset = thread_offset;
 
-    zend_object_std_init(&new_actor->obj, entry);
-    object_properties_init(&new_actor->obj, entry);
+    zend_object_std_init(&actor_internal->obj, entry);
+    object_properties_init(&actor_internal->obj, entry);
 
-    new_actor->obj.handlers = &ph_Actor_handlers;
+    actor_internal->obj.handlers = &ph_Actor_handlers;
 
     if (!PHACTOR_ZG(allowed_to_construct_object)) {
         zend_throw_exception(zend_ce_error, "Actors cannot be created via class instantiation - create an ActorRef object instead", 0);
-        return &new_actor->obj;
+        return &actor_internal->obj;
     }
+
+    ph_mcontext_init(&actor_internal->context.mc, process_message_handler);
+
+    zend_vm_stack_init();
+    ph_vmcontext_get(&actor_internal->context.vmc);
 
     /*
     Prevents an actor from being destroyed automatically.
     */
-    ++GC_REFCOUNT(&new_actor->obj); // @todo necessary still?
-    new_actor->state = PH_ACTOR_ACTIVE;
+    ++GC_REFCOUNT(&actor_internal->obj); // @todo necessary still?
 
-    ph_queue_init(&new_actor->mailbox, ph_msg_free);
-    ph_mcontext_init(&new_actor->context.mc, process_message_handler);
-    pthread_mutex_init(&new_actor->lock, NULL);
-
-    return &new_actor->obj;
+    return &actor_internal->obj;
 }
 
 ZEND_BEGIN_ARG_INFO_EX(Actor_send_arginfo, 0, 0, 2)
@@ -196,42 +294,21 @@ ZEND_END_ARG_INFO()
 PHP_METHOD(Actor, send)
 {
     ph_string_t from_actor_ref, to_actor_name;
-    int using_actor_name = 1;
+    char using_actor_name;
     zval *to_actor, *message;
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "zz", &to_actor, &message) != SUCCESS) {
         return;
     }
 
-    ph_actor_t *from_actor = ph_actor_retrieve_from_object(Z_OBJ(EX(This)));
-
-    ph_str_set(&from_actor_ref, PH_STRV_P(from_actor->ref), PH_STRL_P(from_actor->ref));
-
-    if (Z_TYPE_P(to_actor) == IS_STRING) {
-        ph_str_set(&to_actor_name, Z_STRVAL_P(to_actor), Z_STRLEN_P(to_actor));
-    } else if (Z_TYPE_P(to_actor) == IS_OBJECT && instanceof_function(Z_OBJCE_P(to_actor), ph_ActorRef_ce)) {
-        zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);
-        zval zref, *value;
-        zend_class_entry *fake_scope = EG(fake_scope);
-
-        ZVAL_STR(&zref, ref);
-
-        // fake the scope so that we can fetch the private propeties
-        EG(fake_scope) = ph_ActorRef_ce;
-
-        value = std_object_handlers.read_property(to_actor, &zref, BP_VAR_IS, NULL, NULL);
-
-        EG(fake_scope) = fake_scope;
-
-        zend_string_free(ref);
-
-        ph_str_set(&to_actor_name, Z_STRVAL_P(value), Z_STRLEN_P(value));
-        using_actor_name = 0;
-    } else {
-        ph_str_value_free(&from_actor_ref);
+    if (!ph_valid_actor_arg(to_actor, &using_actor_name, &to_actor_name)) {
         zend_throw_exception(NULL, "Invalid recipient value", 0);
         return;
     }
+
+    ph_actor_t *from_actor = ph_actor_retrieve_from_object(Z_OBJ(EX(This)));
+
+    ph_str_set(&from_actor_ref, PH_STRV_P(from_actor->internal->ref), PH_STRL_P(from_actor->internal->ref));
 
     ph_task_t *task = ph_task_create_send_message(&from_actor_ref, &to_actor_name, using_actor_name, message);
 
@@ -286,7 +363,7 @@ void ph_actor_ce_init(void)
 
     memcpy(&ph_Actor_handlers, zh, sizeof(zend_object_handlers));
 
-    ph_Actor_handlers.offset = XtOffsetOf(ph_actor_t, obj);
+    ph_Actor_handlers.offset = XtOffsetOf(ph_actor_internal_t, obj);
     ph_Actor_handlers.dtor_obj = ph_actor_dtor_object_dummy;
     ph_Actor_handlers.free_obj = ph_actor_free_object_dummy;
 }

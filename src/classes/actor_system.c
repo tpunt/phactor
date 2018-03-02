@@ -50,7 +50,7 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
     ph_queue_push(&to_actor->mailbox, message);
 
     if (to_actor->state != PH_ACTOR_ACTIVE && ph_queue_size(&to_actor->mailbox) == 1) {
-        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + to_actor->thread_offset;
+        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + to_actor->internal->thread_offset;
 
         pthread_mutex_lock(&thread->tasks.lock);
         ph_queue_push(&thread->tasks, ph_task_create_resume_actor(to_actor));
@@ -88,7 +88,7 @@ zend_bool send_message(ph_task_t *task)
     }
 
     if (actor) {
-        if (actor == (ph_actor_t *)1) { // Enqueue the message again, since the actor is still being created
+        if (!actor->internal) { // Enqueue the message again, since the actor is still being created
             ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count;
 
             pthread_mutex_lock(&thread->tasks.lock);
@@ -112,25 +112,25 @@ zend_bool send_message(ph_task_t *task)
 
 void process_message(ph_actor_t *for_actor)
 {
-    ph_vmcontext_set(&for_actor->context.vmc);
+    ph_vmcontext_set(&for_actor->internal->context.vmc);
     // swap into process_message_handler
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc);
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->internal->context.mc);
 #else
-    ph_mcontext_start(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, for_actor->context.mc.cb);
-    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc, 0);
+    ph_mcontext_start(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, for_actor->internal->context.mc.cb);
+    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->internal->context.mc, 0);
 #endif
 }
 
 void resume_actor(ph_actor_t *actor)
 {
-    ph_vmcontext_set(&actor->context.vmc);
+    ph_vmcontext_set(&actor->internal->context.vmc);
     // swap back into receive_block
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc);
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc);
 #else
-    ph_mcontext_resume(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc);
-    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc, 2);
+    ph_mcontext_resume(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc);
+    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc, 2);
 #endif
 }
 
@@ -157,33 +157,21 @@ ph_actor_t *new_actor(ph_task_t *task)
 
     PHACTOR_ZG(allowed_to_construct_object) = 0;
 
-    ph_actor_t *new_actor = ph_actor_retrieve_from_object(Z_OBJ(zobj));
+    ph_actor_internal_t *actor_internal = ph_actor_internal_retrieve_from_object(Z_OBJ(zobj));
     ph_string_t *actor_name = task->u.nat.actor_name;
     ph_string_t *actor_ref = task->u.nat.actor_ref;
 
-    // @todo what are the technical reasons for not doing this in phactor_actor_ctor?
-    zend_vm_stack_init();
-    ph_vmcontext_get(&new_actor->context.vmc);
+    actor_internal->ref = actor_ref;
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+    ph_actor_t *new_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref);
 
-    assert(ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref) == (ph_actor_t *)1);
+    assert(new_actor);
 
-    if (actor_name && ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, actor_name) != (ph_actor_t *)1) {
-        zend_throw_exception_ex(zend_ce_exception, 0, "An actor with the name '%s' already exists\n", PH_STRV_P(actor_name));
-        zend_string_free(class);
-        ph_actor_free(new_actor);
-        return NULL;
-    }
-
+    pthread_mutex_lock(&new_actor->lock);
     new_actor->name = actor_name;
-    new_actor->ref = actor_ref;
-
-    ph_hashtable_update(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref, new_actor);
-
-    if (actor_name) {
-        ph_hashtable_update(&PHACTOR_G(actor_system)->actors_by_name, actor_name, new_actor);
-    }
+    new_actor->internal = actor_internal;
+    pthread_mutex_unlock(&new_actor->lock);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
     zend_function *constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
@@ -269,7 +257,7 @@ void message_handling_loop(ph_thread_t *ph_thread)
                 {
                     ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &current_task->u.rat.actor_ref);
 
-                    assert(actor && actor != (ph_actor_t *)1); // may change in future
+                    assert(actor && actor->internal); // may change in future
 
                     pthread_mutex_lock(&actor->lock);
                     actor->state = PH_ACTOR_ACTIVE;

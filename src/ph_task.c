@@ -41,7 +41,7 @@ ph_task_t *ph_task_create_resume_actor(ph_actor_t *actor)
 {
     ph_task_t *new_task = malloc(sizeof(ph_task_t));
 
-    ph_str_set(&new_task->u.rat.actor_ref, PH_STRV_P(actor->ref), PH_STRL_P(actor->ref));
+    ph_str_set(&new_task->u.rat.actor_ref, PH_STRV_P(actor->internal->ref), PH_STRL_P(actor->internal->ref));
     new_task->type = PH_RESUME_ACTOR_TASK;
 
     return new_task;

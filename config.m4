@@ -17,7 +17,8 @@ if test "$PHP_PHACTOR" != "no"; then
         src/ds/ph_hashtable.c \
         src/classes/actor_system.c \
         src/classes/actor.c \
-        src/classes/actor_ref.c, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
+        src/classes/actor_ref.c \
+        src/classes/supervisor.c, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
 
     EXTRA_CFLAGS="$EXTRA_CFLAGS -std=gnu99"
     PHP_SUBST(EXTRA_CFLAGS)
