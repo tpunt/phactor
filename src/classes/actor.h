@@ -21,9 +21,10 @@
 
 #include "src/ph_context.h"
 #include "src/ph_entry.h"
-#include "src/ds/ph_queue.h"
 #include "src/ph_string.h"
+#include "src/ds/ph_queue.h"
 #include "src/ds/ph_hashtable.h"
+#include "src/classes/supervisor.h"
 
 typedef enum _ph_actor_state_t {
     PH_ACTOR_IDLE,  // waiting for something - needs context restoring
@@ -42,8 +43,8 @@ typedef struct _ph_actor_t {
     ph_queue_t mailbox;
     ph_actor_state_t state;
     struct _ph_actor_t *supervisor;
-    ph_hashtable_t *workers;
-    pthread_mutex_t lock; // @todo remove this and just reused mailbox lock
+    ph_supervision_t supervision;
+    pthread_mutex_t lock; // @todo remove this and just reuse mailbox lock
     ph_actor_internal_t *internal;
 } ph_actor_t;
 

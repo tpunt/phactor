@@ -108,8 +108,8 @@ void ph_actor_free(void *actor_void)
 
     pthread_mutex_destroy(&actor->lock);
 
-    if (actor->workers) {
-        ph_hashtable_destroy(actor->workers);
+    if (actor->supervision.workers) {
+        ph_hashtable_destroy(actor->supervision.workers);
     }
 
     ph_queue_destroy(&actor->mailbox);
@@ -233,13 +233,30 @@ void process_message_handler(void)
     efree(EG(current_execute_data));
     EG(current_execute_data) = old_execute_data;
 
-    if (EG(exception)) {
-        // @todo log it/notify a supervisor to take action (restart the actor, etc)
-        EG(exception) = NULL;
-    }
-
     if (result == FAILURE && !EG(exception)) {
         zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object->ce->name), "::", "receive");
+    }
+
+    if (EG(exception)) {
+        if (actor->supervisor) {
+            switch (actor->supervisor->supervision.strategy) {
+                case PH_SUPERVISOR_ONE_FOR_ONE:
+                    // ph_string_t *ref = actor->internal->ref;
+
+                    // pthread_mutex_lock(&actor->lock);
+                    // ph_actor_internal_free(actor->internal);
+                    // actor->internal = NULL;
+                    // pthread_mutex_lock(&actor->lock);
+
+                    // task_t *new_actor_task()
+                    // free actor internal
+                    // create a new actor task
+                    // schedule it
+                    break;
+            }
+        }
+
+        EG(exception) = NULL;
     }
 
     zval_dtor(&fci.function_name);

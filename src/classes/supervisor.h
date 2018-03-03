@@ -19,9 +19,16 @@
 #ifndef PH_SUPERVISOR_H
 #define PH_SUPERVISOR_H
 
+#include "src/ds/ph_hashtable.h"
+
 typedef enum _ph_supervision_strategies_t {
     PH_SUPERVISOR_ONE_FOR_ONE
 } ph_supervision_strategies_t;
+
+typedef struct _ph_supervision_t {
+    ph_supervision_strategies_t strategy;
+    ph_hashtable_t *workers;
+} ph_supervision_t;
 
 void ph_supervisor_ce_init(void);
 

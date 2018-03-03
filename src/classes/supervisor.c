@@ -42,11 +42,12 @@ void ph_supervision_tree_create(ph_actor_t *supervisor, ph_supervision_strategie
         size <<= 1;
     }
 
-    supervisor->workers = malloc(sizeof(ph_hashtable_t));
-    ph_hashtable_init(supervisor->workers, size, ph_actor_free_dummy);
+    supervisor->supervision.strategy = strategy;
+    supervisor->supervision.workers = malloc(sizeof(ph_hashtable_t));
+    ph_hashtable_init(supervisor->supervision.workers, size, ph_actor_free_dummy);
 
     for (int i = 0; i < worker_count; ++i) {
-        ph_hashtable_insert_ind(supervisor->workers, (long)workers[i], workers[i]);
+        ph_hashtable_insert_ind(supervisor->supervision.workers, (long)workers[i], workers[i]);
     }
 
     pthread_mutex_unlock(&supervisor->lock);
