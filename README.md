@@ -40,6 +40,8 @@ $actorSystem = new ActorSystem(1);
 
 class Test extends Actor
 {
+    // internal actor state
+    private $i = 0;
     private $messages = ['something 1', 'something 2', 'something 3', 'shutdown'];
 
     public function __construct(string $s)
@@ -60,9 +62,8 @@ class Test extends Actor
                 break;
             }
 
-            $nextRandomMessage = $this->messages[array_rand($this->messages)];
-            // send a random message to itself
-            $this->send($sender, [$sender, $nextRandomMessage]);
+            // send a message to itself
+            $this->send($sender, [$sender, $this->messages[$this->i++]]);
         } while (true);
 
         // shut down the actor system - without this, the PHP process will not stop
@@ -95,7 +96,7 @@ final class ActorRef
     private $ref;
     private $name;
 
-    public function __construct(string $actorClassName, array $ctorArgs = [], string $actorName = '');
+    public function __construct(string $actorClassName[, array $ctorArgs[, string $actorName = '']]);
 
     public function getRef(void) : string;
 
@@ -106,11 +107,14 @@ final class ActorRef
 
 abstract class Actor
 {
+    // the public API of an actor
     public abstract function receive(void) : void;
 
+    // send a message to another actor
     protected final function send(ActorRef $toActorRef, mixed $message) : void;
     protected final function send(string $toActorName, mixed $message) : void;
 
+    // wait for a message
     protected final function receiveBlock(void) : mixed; // returns $message
 }
 ```
