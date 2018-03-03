@@ -22,14 +22,14 @@
 #include "src/ph_entry.h"
 #include "src/ds/ph_hashtable.h"
 
-static void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
-static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
-static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value);
-void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value);
-void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash);
+static void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, long hash);
+static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, long hash);
+static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, long hash, void *value);
+void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, long hash, void *value);
+void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, long hash);
 static void ph_hashtable_resize(ph_hashtable_t *ht);
 static void ph_hashtable_repopulate(ph_hashtable_t *ht, ph_bucket_t *old_values, int old_size);
-static int get_hash(ph_string_t *key);
+static long get_hash(ph_string_t *key);
 
 void ph_hashtable_init(ph_hashtable_t *ht, int size, void (*dtor)(void *))
 {
@@ -61,7 +61,7 @@ void ph_hashtable_destroy(ph_hashtable_t *ht)
     pthread_mutex_destroy(&ht->lock);
 }
 
-void ph_hashtable_insert_ind(ph_hashtable_t *ht, int hash, void *value)
+void ph_hashtable_insert_ind(ph_hashtable_t *ht, long hash, void *value)
 {
     // resize at 75% capacity
     if (ht->used == ht->size - (ht->size >> 2)) {
@@ -81,7 +81,7 @@ void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value)
     ph_hashtable_insert_direct(ht, key, get_hash(key), value);
 }
 
-static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value)
+static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, long hash, void *value)
 {
     int index = hash & (ht->size - 1);
     int variance = 0;
@@ -99,7 +99,7 @@ static void ph_hashtable_insert_direct(ph_hashtable_t *ht, ph_string_t *key, int
         }
 
         if (variance > b->variance) {
-            int tmp_hash = b->hash;
+            long tmp_hash = b->hash;
             void *tmp_value = b->value;
             int tmp_variance = b->variance;
             ph_string_t *tmp_key = b->key;
@@ -148,19 +148,12 @@ static void ph_hashtable_repopulate(ph_hashtable_t *ht, ph_bucket_t *old_values,
     }
 }
 
-// @todo make decent
-static int get_hash(ph_string_t *key)
+static long get_hash(ph_string_t *key)
 {
-    int hash = 0;
-
-    for (int i = 0; i < PH_STRL_P(key); ++i) {
-        hash += PH_STRV_P(key)[i];
-    }
-
-    return hash;
+    return zend_hash_func(PH_STRV_P(key), PH_STRL_P(key));
 }
 
-void *ph_hashtable_search_ind(ph_hashtable_t *ht, int hash)
+void *ph_hashtable_search_ind(ph_hashtable_t *ht, long hash)
 {
     return ph_hashtable_search_direct(ht, NULL, hash);
 }
@@ -170,7 +163,7 @@ void *ph_hashtable_search(ph_hashtable_t *ht, ph_string_t *key)
     return ph_hashtable_search_direct(ht, key, get_hash(key));
 }
 
-void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
+void *ph_hashtable_search_direct(ph_hashtable_t *ht, ph_string_t *key, long hash)
 {
     int index = hash & (ht->size - 1);
 
@@ -200,7 +193,7 @@ ph_string_t *ph_hashtable_key_fetch(ph_hashtable_t *ht, ph_string_t *key)
     return ph_hashtable_key_fetch_direct(ht, key, get_hash(key));
 }
 
-static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
+static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_t *key, long hash)
 {
     int index = hash & (ht->size - 1);
 
@@ -225,7 +218,7 @@ static ph_string_t *ph_hashtable_key_fetch_direct(ph_hashtable_t *ht, ph_string_
     return NULL;
 }
 
-void ph_hashtable_update_ind(ph_hashtable_t *ht, int hash, void *value)
+void ph_hashtable_update_ind(ph_hashtable_t *ht, long hash, void *value)
 {
     ph_hashtable_update_direct(ht, NULL, hash, value);
 }
@@ -235,7 +228,7 @@ void ph_hashtable_update(ph_hashtable_t *ht, ph_string_t *key, void *value)
     ph_hashtable_update_direct(ht, key, get_hash(key), value);
 }
 
-void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, void *value)
+void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, long hash, void *value)
 {
     int index = hash & (ht->size - 1);
 
@@ -254,7 +247,7 @@ void ph_hashtable_update_direct(ph_hashtable_t *ht, ph_string_t *key, int hash, 
     }
 }
 
-void ph_hashtable_delete_ind(ph_hashtable_t *ht, int hash)
+void ph_hashtable_delete_ind(ph_hashtable_t *ht, long hash)
 {
     ph_hashtable_delete_direct(ht, NULL, hash);
 }
@@ -264,7 +257,7 @@ void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key)
     ph_hashtable_delete_direct(ht, key, get_hash(key));
 }
 
-void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, int hash)
+void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, long hash)
 {
     int index = hash & (ht->size - 1);
 
