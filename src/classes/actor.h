@@ -51,7 +51,7 @@ typedef struct _ph_actor_t {
 ph_actor_internal_t *ph_actor_internal_retrieve_from_object(zend_object *actor_obj);
 ph_actor_t *ph_actor_retrieve_from_object(zend_object *actor_obj);
 ph_actor_t *ph_actor_retrieve_from_zval(zval *actor_zval_obj);
-ph_actor_t *ph_actor_create(void);
+ph_actor_t *ph_actor_create(ph_string_t *actor_name);
 void ph_actor_ce_init(void);
 void ph_actor_free(void *actor_void);
 void ph_actor_free_dummy(void *actor_void);

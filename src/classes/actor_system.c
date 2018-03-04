@@ -158,7 +158,6 @@ ph_actor_t *new_actor(ph_task_t *task)
     PHACTOR_ZG(allowed_to_construct_object) = 0;
 
     ph_actor_internal_t *actor_internal = ph_actor_internal_retrieve_from_object(Z_OBJ(zobj));
-    ph_string_t *actor_name = task->u.nat.actor_name;
     ph_string_t *actor_ref = task->u.nat.actor_ref;
 
     actor_internal->ref = actor_ref;
@@ -169,7 +168,6 @@ ph_actor_t *new_actor(ph_task_t *task)
     assert(new_actor);
 
     pthread_mutex_lock(&new_actor->lock);
-    new_actor->name = actor_name;
     new_actor->internal = actor_internal;
     pthread_mutex_unlock(&new_actor->lock);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);

@@ -156,10 +156,11 @@ int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_a
     return 0;
 }
 
-ph_actor_t *ph_actor_create(void)
+ph_actor_t *ph_actor_create(ph_string_t *actor_name)
 {
     ph_actor_t *new_actor = calloc(1, sizeof(ph_actor_t));
 
+    new_actor->name = actor_name;
     new_actor->state = PH_ACTOR_ACTIVE;
 
     ph_queue_init(&new_actor->mailbox, ph_msg_free);

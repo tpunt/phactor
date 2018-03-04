@@ -75,7 +75,7 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
         return;
     }
 
-    ph_task_t *task = ph_task_create_new_actor(actor_class, ctor_args, actor_name);
+    ph_task_t *task = ph_task_create_new_actor(actor_class, ctor_args);
 
     if (!task) {
         zend_throw_exception(zend_ce_error, "Failed to serialise the constructor arguments", 0);
@@ -86,19 +86,25 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
     task->u.nat.actor_ref = ph_str_alloc(ACTOR_REF_LEN);
     ph_actor_ref_set(task->u.nat.actor_ref);
 
-    ph_actor_t *new_actor = ph_actor_create();
+    ph_string_t *new_actor_name = NULL;
+
+    if (actor_name) {
+        new_actor_name = ph_str_create(ZSTR_VAL(actor_name), ZSTR_LEN(actor_name));
+    }
+
+    ph_actor_t *new_actor = ph_actor_create(new_actor_name);
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     if (actor_name) {
-        if (ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, task->u.nat.actor_name)) {
+        if (ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, new_actor_name)) {
             zend_throw_exception(zend_ce_error, "An actor with the specified name has already been created", 0);
-            free(task->u.nat.actor_ref);
-            free(task->u.nat.actor_name);
+            ph_str_free(task->u.nat.actor_ref);
+            ph_str_free(new_actor_name);
             ph_task_free(task);
             return;
         }
 
-        ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_name, task->u.nat.actor_name, new_actor);
+        ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_name, new_actor_name, new_actor);
     }
 
     ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, task->u.nat.actor_ref, new_actor);
@@ -120,15 +126,15 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
     zend_string_free(ref);
     zend_string_release(Z_STR(value));
 
-    if (task->u.nat.actor_name) {
+    if (actor_name) {
         zend_string *name = zend_string_init(ZEND_STRL("name"), 0);
         zval zname, value;
         ZVAL_STR(&zname, name);
-        ZVAL_STRINGL(&value, PH_STRV_P(task->u.nat.actor_name), PH_STRL_P(task->u.nat.actor_name));
+        ZVAL_STR(&value, actor_name);
 
         zend_std_write_property(zobj, &zname, &value, NULL);
         zend_string_free(name);
-        zend_string_release(Z_STR(value));
+        zend_string_release(actor_name); // @todo needed?
     }
 }
 

@@ -47,7 +47,7 @@ ph_task_t *ph_task_create_resume_actor(ph_actor_t *actor)
     return new_task;
 }
 
-ph_task_t *ph_task_create_new_actor(zend_string *actor_class, zval *ctor_args, zend_string *actor_name)
+ph_task_t *ph_task_create_new_actor(zend_string *actor_class, zval *ctor_args)
 {
     ph_task_t *new_task = malloc(sizeof(ph_task_t));
 
@@ -78,12 +78,6 @@ ph_task_t *ph_task_create_new_actor(zend_string *actor_class, zval *ctor_args, z
                 return NULL;
             }
         } ZEND_HASH_FOREACH_END();
-    }
-
-    if (!actor_name) {
-        new_task->u.nat.actor_name = NULL;
-    } else {
-        new_task->u.nat.actor_name = ph_str_create(ZSTR_VAL(actor_name), ZSTR_LEN(actor_name));
     }
 
     ph_str_set(&new_task->u.nat.actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
