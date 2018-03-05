@@ -3,7 +3,7 @@ Actor crashing should not affect the rest of the actor system
 --FILE--
 <?php
 
-use phactor\{ActorSystem, Actor, ActorRef, Supervisor};
+use phactor\{ActorSystem, Actor, ActorRef};
 
 $as = new ActorSystem(1);
 
@@ -11,8 +11,9 @@ class A extends Actor
 {
     public function __construct()
     {
-        throw new exception();
+        throw new Exception();
     }
+
     public function receive(){}
 }
 
@@ -20,7 +21,7 @@ class B extends Actor
 {
     public function receive()
     {
-        throw new exception();
+        throw new Exception();
     }
 }
 

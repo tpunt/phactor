@@ -21,6 +21,8 @@
 
 #include "src/ds/ph_hashtable.h"
 
+struct _ph_actor_t;
+
 typedef enum _ph_supervision_strategies_t {
     PH_SUPERVISOR_ONE_FOR_ONE
 } ph_supervision_strategies_t;
@@ -31,5 +33,6 @@ typedef struct _ph_supervision_t {
 } ph_supervision_t;
 
 void ph_supervisor_ce_init(void);
+void ph_supervisor_handle_crash(struct _ph_actor_t *supervisor, struct _ph_actor_t *crashed_actor);
 
 #endif

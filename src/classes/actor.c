@@ -244,43 +244,14 @@ void process_message_handler(void)
     zval_ptr_dtor(&retval);
 
     if (EG(exception)) {
-        if (actor->supervisor) {
-            switch (actor->supervisor->supervision.strategy) {
-                case PH_SUPERVISOR_ONE_FOR_ONE:
-                    {
-                        ph_string_t *ref = actor->internal->ref;
-                        zend_string *actor_class = actor->internal->obj.ce->name;
-                        ph_string_t new_actor_class;
-                        int thread_offset = actor->internal->thread_offset;
-
-                        ph_str_set(&new_actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
-
-                        // @todo mutex lock here is likely not needed, since only
-                        // this thread will touch these members
-                        pthread_mutex_lock(&actor->lock);
-                        ph_actor_internal_free(actor->internal);
-                        actor->internal = NULL;
-                        pthread_mutex_unlock(&actor->lock);
-
-                        ph_task_t *task = ph_task_create_new_actor(ref, &new_actor_class);
-
-                        // @todo we don't have to schedule the actor to be on the
-                        // same thread, but for now, we will do
-                        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + thread_offset;
-
-                        pthread_mutex_lock(&thread->tasks.lock);
-                        ph_queue_push(&thread->tasks, task);
-                        pthread_mutex_unlock(&thread->tasks.lock);
-
-                        EG(exception) = NULL;
-
-                        goto end;
-                    }
-                    break;
-            }
-        }
-
+        // @todo save exception message to allow for crash logging?
+        // Also, this probably needs special freeing
         EG(exception) = NULL;
+
+        if (actor->supervisor) {
+            ph_supervisor_handle_crash(actor->supervisor, actor);
+            goto end;
+        }
     }
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);

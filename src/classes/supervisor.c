@@ -21,6 +21,7 @@
 #include "ext/standard/php_mt_rand.h"
 
 #include "php_phactor.h"
+#include "src/ph_task.h"
 #include "src/ph_string.h"
 #include "src/classes/actor.h"
 #include "src/classes/supervisor.h"
@@ -30,6 +31,42 @@ extern ph_actor_system_t *actor_system;
 
 // zend_object_handlers ph_Supervisor_handlers;
 zend_class_entry *ph_Supervisor_ce;
+
+void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
+{
+    ph_string_t *ref = crashed_actor->internal->ref;
+    zend_string *actor_class = crashed_actor->internal->obj.ce->name;
+    ph_string_t new_actor_class;
+    int thread_offset = crashed_actor->internal->thread_offset;
+
+    ph_str_set(&new_actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
+
+    // @todo mutex lock here is likely not needed, since only
+    // this thread will touch these members
+    pthread_mutex_lock(&crashed_actor->lock);
+    ph_actor_internal_free(crashed_actor->internal);
+    crashed_actor->internal = NULL;
+    pthread_mutex_unlock(&crashed_actor->lock);
+
+    ph_task_t *task = ph_task_create_new_actor(ref, &new_actor_class);
+
+    // @todo we don't have to schedule the actor to be on the
+    // same thread, but for now, we will do
+    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + thread_offset;
+
+    pthread_mutex_lock(&thread->tasks.lock);
+    ph_queue_push(&thread->tasks, task);
+    pthread_mutex_unlock(&thread->tasks.lock);
+}
+
+void ph_supervisor_handle_crash(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
+{
+    switch (supervisor->supervision.strategy) {
+        case PH_SUPERVISOR_ONE_FOR_ONE:
+            ph_supervisor_one_for_one(supervisor, crashed_actor);
+            break;
+    }
+}
 
 void ph_supervision_tree_create(ph_actor_t *supervisor, ph_supervision_strategies_t strategy, ph_actor_t **workers, int worker_count)
 {

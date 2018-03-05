@@ -62,5 +62,6 @@ zend_long ph_named_actor_total(zend_string *name);
 void ph_named_actor_remove(void *named_actor_void);
 void ph_actor_mark_for_removal(void *actor_void);
 int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_actor_name);
+void ph_actor_internal_free(ph_actor_internal_t *actor_internal);
 
 #endif
