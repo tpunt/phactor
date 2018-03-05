@@ -59,25 +59,8 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
     pthread_mutex_unlock(&to_actor->lock);
 }
 
-void send_remote_message(ph_task_t *task)
+void send_message(ph_task_t *task)
 {
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
-    if (PHACTOR_G(actor_system)->shutdown) {
-        // The actor system was shut down and the actor being sent to was freed.
-        // This will need to be changed in future.
-        pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
-        return;
-    }
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
-
-    // @todo debugging purposes only - no implementation yet
-    printf("Tried to send a message to a non-existent (or remote) actor\n");
-    assert(0);
-}
-
-zend_bool send_message(ph_task_t *task)
-{
-    zend_bool sent = 1;
     ph_actor_t *actor;
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
@@ -88,17 +71,7 @@ zend_bool send_message(ph_task_t *task)
     }
 
     if (actor) {
-        if (!actor->internal) { // Enqueue the message again, since the actor is still being created
-            ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count;
-
-            pthread_mutex_lock(&thread->tasks.lock);
-            ph_queue_push(&thread->tasks, task);
-            pthread_mutex_unlock(&thread->tasks.lock);
-
-            sent = 0;
-        } else {
-            send_local_message(actor, task);
-        }
+        send_local_message(actor, task);
     } else {
         // Actor either didn't exist or no longer exists
         // @todo Perhaps implement logging or something for this scenario?
@@ -106,8 +79,6 @@ zend_bool send_message(ph_task_t *task)
         // objects would come into play
     }
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-
-    return sent;
 }
 
 void process_message(ph_actor_t *for_actor)
@@ -245,11 +216,7 @@ void message_handling_loop(ph_thread_t *ph_thread)
 
         switch (current_task->type) {
             case PH_SEND_MESSAGE_TASK:
-                if (!send_message(current_task)) {
-                    // skip the freeing of the current task if the message was never sent
-                    // this can occur if an actor is still being spawned
-                    continue;
-                }
+                send_message(current_task);
                 break;
             case PH_RESUME_ACTOR_TASK:
                 {
