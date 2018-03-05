@@ -110,8 +110,6 @@ ph_actor_t *new_actor(ph_task_t *task)
     ph_string_t actor_class = task->u.nat.actor_class;
     zend_string *class = zend_string_init(PH_STRV(actor_class), PH_STRL(actor_class), 0);
     zend_class_entry *ce = zend_fetch_class_by_name(class, NULL, ZEND_FETCH_CLASS_DEFAULT | ZEND_FETCH_CLASS_EXCEPTION);
-    ph_entry_t *args = task->u.nat.args;
-    int argc = task->u.nat.argc;
     zval zobj;
 
     PHACTOR_ZG(allowed_to_construct_object) = 1;
@@ -144,6 +142,8 @@ ph_actor_t *new_actor(ph_task_t *task)
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
     zend_function *constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
+    ph_entry_t *args = new_actor->ctor_args;
+    int argc = new_actor->ctor_argc;
 
     if (constructor) {
         int result;
@@ -164,14 +164,15 @@ ph_actor_t *new_actor(ph_task_t *task)
 
         result = zend_call_function(&fci, NULL);
 
-        if (result == FAILURE) {
-            if (!EG(exception)) {
-                // same as problem above?
-                zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(class), "::", "__construct");
-                zend_string_free(class);
-                return NULL;
-            }
+        if (result == FAILURE && !EG(exception)) {
+            // same as problem above?
+            zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(class), "::", "__construct");
+            zval_dtor(&fci.function_name);
+            zend_string_free(class);
+            return NULL;
         }
+
+        // @todo handle if EG(exception) is set
 
         zval_dtor(&fci.function_name);
         zval_ptr_dtor(&retval);

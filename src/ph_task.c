@@ -47,40 +47,13 @@ ph_task_t *ph_task_create_resume_actor(ph_actor_t *actor)
     return new_task;
 }
 
-ph_task_t *ph_task_create_new_actor(zend_string *actor_class, zval *ctor_args)
+ph_task_t *ph_task_create_new_actor(ph_string_t *actor_ref, ph_string_t *actor_class)
 {
     ph_task_t *new_task = malloc(sizeof(ph_task_t));
 
-    new_task->u.nat.args = NULL;
-    new_task->u.nat.argc = 0;
     new_task->type = PH_NEW_ACTOR_TASK;
-
-    if (ctor_args && Z_ARR_P(ctor_args)->nNumUsed) {
-        zval *value;
-        int i = 0;
-
-        new_task->u.nat.args = malloc(sizeof(ph_entry_t) * Z_ARR_P(ctor_args)->nNumUsed);
-        new_task->u.nat.argc = Z_ARR_P(ctor_args)->nNumUsed;
-
-        ZEND_HASH_FOREACH_VAL(Z_ARR_P(ctor_args), value) {
-            if (ph_entry_convert_from_zval(new_task->u.nat.args + i, value)) {
-                ++i;
-            } else {
-                zend_throw_error(NULL, "Failed to serialise argument %d", i + 1);
-
-                for (int i2 = 0; i2 < i; ++i2) {
-                    ph_entry_value_free(new_task->u.nat.args + i2);
-                }
-
-                free(new_task->u.nat.args);
-                free(new_task);
-
-                return NULL;
-            }
-        } ZEND_HASH_FOREACH_END();
-    }
-
-    ph_str_set(&new_task->u.nat.actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
+    new_task->u.nat.actor_ref = actor_ref;
+    new_task->u.nat.actor_class = *actor_class;
 
     return new_task;
 }
@@ -94,10 +67,6 @@ void ph_task_free(void *task_void)
             ph_entry_free(task->u.smt.message);
             break;
         case PH_NEW_ACTOR_TASK:
-            for (int i = 0; i < task->u.nat.argc; ++i) {
-                ph_entry_value_free(task->u.nat.args + i);
-            }
-            free(task->u.nat.args);
         case PH_RESUME_ACTOR_TASK:;
     }
 

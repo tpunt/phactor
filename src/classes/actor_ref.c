@@ -75,39 +75,66 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
         return;
     }
 
-    ph_task_t *task = ph_task_create_new_actor(actor_class, ctor_args);
+    ph_entry_t *new_ctor_args = NULL;
+    int new_ctor_argc = 0;
 
-    if (!task) {
-        zend_throw_exception(zend_ce_error, "Failed to serialise the constructor arguments", 0);
-        return;
+    if (ctor_args && Z_ARR_P(ctor_args)->nNumUsed) {
+        zval *value;
+        int i = 0;
+
+        new_ctor_args = malloc(sizeof(ph_entry_t) * Z_ARR_P(ctor_args)->nNumUsed);
+        new_ctor_argc = Z_ARR_P(ctor_args)->nNumUsed;
+
+        ZEND_HASH_FOREACH_VAL(Z_ARR_P(ctor_args), value) {
+            if (ph_entry_convert_from_zval(new_ctor_args + i, value)) {
+                ++i;
+            } else {
+                zend_throw_error(NULL, "Failed to serialise argument %d of the constructor arguments", i + 1);
+
+                for (int i2 = 0; i2 < i; ++i2) {
+                    ph_entry_value_free(new_ctor_args + i2);
+                }
+
+                free(new_ctor_args);
+
+                return;
+            }
+        } ZEND_HASH_FOREACH_END();
     }
 
-    // set the ref here, rather than before ph_task_create_new_actor in case it fails
-    task->u.nat.actor_ref = ph_str_alloc(ACTOR_REF_LEN);
-    ph_actor_ref_set(task->u.nat.actor_ref);
-
+    ph_string_t *new_actor_ref = ph_str_alloc(ACTOR_REF_LEN);
+    ph_string_t new_actor_class;
     ph_string_t *new_actor_name = NULL;
+
+    ph_actor_ref_set(new_actor_ref);
+    ph_str_set(&new_actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
 
     if (actor_name) {
         new_actor_name = ph_str_create(ZSTR_VAL(actor_name), ZSTR_LEN(actor_name));
     }
 
-    ph_actor_t *new_actor = ph_actor_create(new_actor_name);
+    ph_task_t *task = ph_task_create_new_actor(new_actor_ref, &new_actor_class);
+    ph_actor_t *new_actor = ph_actor_create(new_actor_name, new_ctor_args, new_ctor_argc);
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     if (actor_name) {
         if (ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, new_actor_name)) {
+            pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+
             zend_throw_exception(zend_ce_error, "An actor with the specified name has already been created", 0);
-            ph_str_free(task->u.nat.actor_ref);
+
+            ph_str_free(new_actor_ref);
             ph_str_free(new_actor_name);
+            ph_str_value_free(&new_actor_class);
             ph_task_free(task);
+
             return;
         }
 
         ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_name, new_actor_name, new_actor);
     }
 
-    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, task->u.nat.actor_ref, new_actor);
+    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, new_actor_ref, new_actor);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
     int thread_offset = php_mt_rand_range(0, PHACTOR_G(actor_system)->thread_count - 1);
@@ -120,7 +147,7 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
     zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);
     zval zref, value;
     ZVAL_STR(&zref, ref);
-    ZVAL_STRINGL(&value, PH_STRV_P(task->u.nat.actor_ref), PH_STRL_P(task->u.nat.actor_ref));
+    ZVAL_STRINGL(&value, PH_STRV_P(new_actor_ref), PH_STRL_P(new_actor_ref));
 
     zend_std_write_property(zobj, &zref, &value, NULL);
     zend_string_free(ref);

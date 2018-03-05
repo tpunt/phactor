@@ -44,5 +44,5 @@ class Test2 extends Actor
     }
 }
 --EXPECT--
-string(45) "Failed to serialise the constructor arguments"
+string(59) "Failed to serialise argument 1 of the constructor arguments"
 string(31) "Failed to serialise the message"
