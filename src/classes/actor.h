@@ -27,8 +27,9 @@
 #include "src/classes/supervisor.h"
 
 typedef enum _ph_actor_state_t {
-    PH_ACTOR_IDLE,  // waiting for something - needs context restoring
-    PH_ACTOR_ACTIVE // in execution - prevents parallel execution of an actor
+    PH_ACTOR_SPAWNING, // prevents invoking receiveBlock in the constructor
+    PH_ACTOR_IDLE,     // waiting for something - needs context restoring
+    PH_ACTOR_ACTIVE    // in execution - prevents parallel execution of an actor
 } ph_actor_state_t;
 
 typedef struct _ph_actor_internal_t {

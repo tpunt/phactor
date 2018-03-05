@@ -161,7 +161,7 @@ ph_actor_t *ph_actor_create(ph_string_t *actor_name, ph_entry_t *ctor_args, int 
     ph_actor_t *new_actor = calloc(1, sizeof(ph_actor_t));
 
     new_actor->name = actor_name;
-    new_actor->state = PH_ACTOR_ACTIVE;
+    new_actor->state = PH_ACTOR_SPAWNING;
     new_actor->ctor_args = ctor_args;
     new_actor->ctor_argc = ctor_argc;
 
@@ -171,21 +171,19 @@ ph_actor_t *ph_actor_create(ph_string_t *actor_name, ph_entry_t *ctor_args, int 
     return new_actor;
 }
 
-static void receive_block(zval *actor_zval, zval *return_value)
+static void receive_block(ph_actor_t *actor, zval *return_value)
 {
-    ph_actor_t *actor = ph_actor_retrieve_from_zval(actor_zval);
-
-    if (thread_offset == PHACTOR_G(actor_system)->thread_count) { // if we are in the main thread
-        zend_throw_exception(zend_ce_exception, "Trying to receive a message when not in the context of an Actor.", 0);
+    pthread_mutex_lock(&actor->lock);
+    if (actor->state == PH_ACTOR_SPAWNING) {
+        pthread_mutex_unlock(&actor->lock);
+        zend_throw_exception(zend_ce_exception, "Actor::receiveBlock() cannot be used in the constructor", 0);
         return;
     }
 
-    pthread_mutex_lock(&actor->lock);
-    ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.vmc);
     actor->state = PH_ACTOR_IDLE;
 
     // @todo possible optimisation: if task queue is empty, just skip the next 7 lines
-    if (ph_queue_size(&actor->mailbox)) { // @todo check send_local_message to see if this conflicts with it
+    if (ph_queue_size(&actor->mailbox)) {
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
         ph_task_t *task = ph_task_create_resume_actor(actor);
 
@@ -194,6 +192,8 @@ static void receive_block(zval *actor_zval, zval *return_value)
         pthread_mutex_unlock(&thread->tasks.lock);
     }
     pthread_mutex_unlock(&actor->lock);
+
+    ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.vmc);
 
 #ifdef PH_FIXED_STACK_SIZE
     ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
@@ -221,6 +221,10 @@ void process_message_handler(void)
     zend_fcall_info fci;
     zval retval;
     int result;
+
+    pthread_mutex_lock(&actor->lock);
+    actor->state = PH_ACTOR_ACTIVE;
+    pthread_mutex_unlock(&actor->lock);
 
     fci.size = sizeof(fci);
     fci.object = object;
@@ -346,7 +350,7 @@ PHP_METHOD(Actor, receiveBlock)
         return;
     }
 
-    receive_block(getThis(), return_value);
+    receive_block(ph_actor_retrieve_from_object(Z_OBJ(EX(This))), return_value);
 }
 
 ZEND_BEGIN_ARG_INFO(Actor_abstract_receive_arginfo, 0)

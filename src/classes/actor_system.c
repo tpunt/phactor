@@ -49,7 +49,7 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
     pthread_mutex_lock(&to_actor->lock);
     ph_queue_push(&to_actor->mailbox, message);
 
-    if (to_actor->state != PH_ACTOR_ACTIVE && ph_queue_size(&to_actor->mailbox) == 1) {
+    if (to_actor->state == PH_ACTOR_IDLE && ph_queue_size(&to_actor->mailbox) == 1) {
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + to_actor->thread_offset;
 
         pthread_mutex_lock(&thread->tasks.lock);
@@ -232,17 +232,13 @@ void message_handling_loop(ph_thread_t *ph_thread)
                 send_message(current_task);
                 break;
             case PH_RESUME_ACTOR_TASK:
-                {
-                    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &current_task->u.rat.actor_ref);
+                pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+                ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &current_task->u.rat.actor_ref);
+                pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-                    assert(actor && actor->internal); // may change in future
+                assert(actor && actor->internal); // may change in future
 
-                    pthread_mutex_lock(&actor->lock);
-                    actor->state = PH_ACTOR_ACTIVE;
-                    pthread_mutex_unlock(&actor->lock);
-
-                    resume_actor(actor);
-                }
+                resume_actor(actor);
                 break;
             case PH_NEW_ACTOR_TASK:
                 currently_processing_actor = new_actor(current_task);
