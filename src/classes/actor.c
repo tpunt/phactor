@@ -240,30 +240,48 @@ void process_message_handler(void)
         zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object->ce->name), "::", "receive");
     }
 
+    zval_dtor(&fci.function_name);
+    zval_ptr_dtor(&retval);
+
     if (EG(exception)) {
         if (actor->supervisor) {
             switch (actor->supervisor->supervision.strategy) {
                 case PH_SUPERVISOR_ONE_FOR_ONE:
-                    // ph_string_t *ref = actor->internal->ref;
+                    {
+                        ph_string_t *ref = actor->internal->ref;
+                        zend_string *actor_class = actor->internal->obj.ce->name;
+                        ph_string_t new_actor_class;
+                        int thread_offset = actor->internal->thread_offset;
 
-                    // pthread_mutex_lock(&actor->lock);
-                    // ph_actor_internal_free(actor->internal);
-                    // actor->internal = NULL;
-                    // pthread_mutex_lock(&actor->lock);
+                        ph_str_set(&new_actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
 
-                    // task_t *new_actor_task()
-                    // free actor internal
-                    // create a new actor task
-                    // schedule it
+                        // @todo mutex lock here is likely not needed, since only
+                        // this thread will touch these members
+                        pthread_mutex_lock(&actor->lock);
+                        ph_actor_internal_free(actor->internal);
+                        actor->internal = NULL;
+                        pthread_mutex_unlock(&actor->lock);
+
+                        ph_task_t *task = ph_task_create_new_actor(ref, &new_actor_class);
+
+                        // @todo we don't have to schedule the actor to be on the
+                        // same thread, but for now, we will do
+                        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + thread_offset;
+
+                        pthread_mutex_lock(&thread->tasks.lock);
+                        ph_queue_push(&thread->tasks, task);
+                        pthread_mutex_unlock(&thread->tasks.lock);
+
+                        EG(exception) = NULL;
+
+                        goto end;
+                    }
                     break;
             }
         }
 
         EG(exception) = NULL;
     }
-
-    zval_dtor(&fci.function_name);
-    zval_ptr_dtor(&retval);
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     if (actor->name) {
@@ -272,6 +290,7 @@ void process_message_handler(void)
     ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_ref, actor->internal->ref);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
+end:;
 #ifdef PH_FIXED_STACK_SIZE
     ph_mcontext_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 #endif
