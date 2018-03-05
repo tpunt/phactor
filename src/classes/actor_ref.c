@@ -140,6 +140,8 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
     int thread_offset = php_mt_rand_range(0, PHACTOR_G(actor_system)->thread_count - 1);
     ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + thread_offset;
 
+    new_actor->thread_offset = thread_offset;
+
     pthread_mutex_lock(&thread->tasks.lock);
     ph_queue_push(&thread->tasks, task);
     pthread_mutex_unlock(&thread->tasks.lock);

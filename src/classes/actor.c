@@ -66,7 +66,7 @@ void ph_actor_mark_for_removal(void *actor_void)
         // actors are still being created (they never become fully created)
         ph_actor_free(actor_void);
     } else {
-        ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->internal->thread_offset;
+        ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->thread_offset;
 
         pthread_mutex_lock(&actor_removals->lock);
         ph_vector_push(actor_removals, actor);
@@ -186,7 +186,7 @@ static void receive_block(zval *actor_zval, zval *return_value)
 
     // @todo possible optimisation: if task queue is empty, just skip the next 7 lines
     if (ph_queue_size(&actor->mailbox)) { // @todo check send_local_message to see if this conflicts with it
-        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->internal->thread_offset;
+        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
         ph_task_t *task = ph_task_create_resume_actor(actor);
 
         pthread_mutex_lock(&thread->tasks.lock);
@@ -270,8 +270,6 @@ end:;
 zend_object* phactor_actor_ctor(zend_class_entry *entry)
 {
     ph_actor_internal_t *actor_internal = ecalloc(1, sizeof(ph_actor_internal_t) + zend_object_properties_size(entry));
-
-    actor_internal->thread_offset = thread_offset;
 
     zend_object_std_init(&actor_internal->obj, entry);
     object_properties_init(&actor_internal->obj, entry);

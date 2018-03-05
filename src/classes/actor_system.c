@@ -50,7 +50,7 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
     ph_queue_push(&to_actor->mailbox, message);
 
     if (to_actor->state != PH_ACTOR_ACTIVE && ph_queue_size(&to_actor->mailbox) == 1) {
-        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + to_actor->internal->thread_offset;
+        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + to_actor->thread_offset;
 
         pthread_mutex_lock(&thread->tasks.lock);
         ph_queue_push(&thread->tasks, ph_task_create_resume_actor(to_actor));

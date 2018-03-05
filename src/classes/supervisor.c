@@ -37,7 +37,6 @@ void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor
     ph_string_t *ref = crashed_actor->internal->ref;
     zend_string *actor_class = crashed_actor->internal->obj.ce->name;
     ph_string_t new_actor_class;
-    int thread_offset = crashed_actor->internal->thread_offset;
 
     ph_str_set(&new_actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
 
@@ -52,7 +51,7 @@ void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor
 
     // @todo we don't have to schedule the actor to be on the
     // same thread, but for now, we will do
-    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + thread_offset;
+    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + crashed_actor->thread_offset;
 
     pthread_mutex_lock(&thread->tasks.lock);
     ph_queue_push(&thread->tasks, task);

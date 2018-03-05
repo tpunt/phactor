@@ -34,7 +34,6 @@ typedef enum _ph_actor_state_t {
 typedef struct _ph_actor_internal_t {
     ph_string_t *ref;
     ph_context_t context;
-    int thread_offset; // @todo could be moved in ph_actor_t ?
     zend_object obj;
 } ph_actor_internal_t;
 
@@ -43,6 +42,7 @@ typedef struct _ph_actor_t {
     ph_queue_t mailbox;
     ph_entry_t *ctor_args;
     int ctor_argc;
+    int thread_offset;
     ph_actor_state_t state;
     struct _ph_actor_t *supervisor;
     ph_supervision_t supervision;
