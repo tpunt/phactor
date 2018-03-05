@@ -105,6 +105,8 @@ void resume_actor(ph_actor_t *actor)
 #endif
 }
 
+static zend_execute_data dummy_execute_data;
+
 ph_actor_t *new_actor(ph_task_t *task)
 {
     ph_string_t actor_class = task->u.nat.actor_class;
@@ -162,7 +164,11 @@ ph_actor_t *new_actor(ph_task_t *task)
         fci.no_separation = 1;
         ZVAL_STRINGL(&fci.function_name, "__construct", sizeof("__construct") - 1);
 
+        EG(current_execute_data) = &dummy_execute_data;
+
         result = zend_call_function(&fci, NULL);
+
+        EG(current_execute_data) = NULL;
 
         if (result == FAILURE && !EG(exception)) {
             // same as problem above?
@@ -172,7 +178,13 @@ ph_actor_t *new_actor(ph_task_t *task)
             return NULL;
         }
 
-        // @todo handle if EG(exception) is set
+        if (EG(exception)) {
+            // @todo what to do in this case?
+            // Logging it may be the only appropriate scenario, unless we can
+            // create an actor that is already linked to a supervisor (where a
+            // supervision strategy can be used instead to handle the failure).
+            EG(exception) = NULL;
+        }
 
         zval_dtor(&fci.function_name);
         zval_ptr_dtor(&retval);

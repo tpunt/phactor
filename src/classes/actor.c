@@ -211,6 +211,8 @@ static void receive_block(zval *actor_zval, zval *return_value)
     ph_msg_free(message);
 }
 
+static zend_execute_data dummy_execute_data;
+
 void process_message_handler(void)
 {
     ph_actor_t *actor = currently_processing_actor;
@@ -228,13 +230,11 @@ void process_message_handler(void)
     fci.no_separation = 1;
     ZVAL_STRINGL(&fci.function_name, "receive", sizeof("receive")-1);
 
-    zend_execute_data *old_execute_data = EG(current_execute_data);
-    EG(current_execute_data) = ecalloc(1, sizeof(zend_execute_data));
+    EG(current_execute_data) = &dummy_execute_data;
 
     result = zend_call_function(&fci, NULL);
 
-    efree(EG(current_execute_data));
-    EG(current_execute_data) = old_execute_data;
+    EG(current_execute_data) = NULL;
 
     if (result == FAILURE && !EG(exception)) {
         zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object->ce->name), "::", "receive");
