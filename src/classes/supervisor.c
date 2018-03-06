@@ -24,13 +24,21 @@
 #include "src/ph_task.h"
 #include "src/ph_string.h"
 #include "src/classes/actor.h"
+#include "src/classes/actor_ref.h"
 #include "src/classes/supervisor.h"
 #include "src/classes/actor_system.h"
 
 extern ph_actor_system_t *actor_system;
+extern zend_class_entry *ph_Actor_ce;
+extern zend_class_entry *ph_ActorRef_ce;
 
-// zend_object_handlers ph_Supervisor_handlers;
+zend_object_handlers ph_Supervisor_handlers;
 zend_class_entry *ph_Supervisor_ce;
+
+ph_supervisor_t *ph_supervisor_fetch_from_object(zend_object *supervisor_obj)
+{
+    return (ph_supervisor_t *)((char *)supervisor_obj - supervisor_obj->handlers->offset);
+}
 
 void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
 {
@@ -49,8 +57,11 @@ void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor
 
     ph_task_t *task = ph_task_create_new_actor(ref, &new_actor_class);
 
-    // @todo we don't have to schedule the actor to be on the
-    // same thread, but for now, we will do
+    // @todo we don't have to schedule the actor to be on the same thread, but
+    // for now, we will do
+    // An advantage of scheduling on the same thread is that we could avoid
+    // deallocating, and then reallocating, the virtual machine stack (just
+    // reset it instead)
     ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + crashed_actor->thread_offset;
 
     pthread_mutex_lock(&thread->tasks.lock);
@@ -184,24 +195,73 @@ PHP_METHOD(Supervisor, __construct)
 
     ph_supervision_tree_create(supervising_actor, supervision_strategy, worker_actors, worker_count);
 
+    ph_supervisor_t *supervisor_obj = ph_supervisor_fetch_from_object(Z_OBJ(EX(This)));
+
+    ph_str_set(&supervisor_obj->ref, PH_STRV_P(supervising_actor->ref), PH_STRL_P(supervising_actor->ref));
+
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
 failure:
     ph_str_value_free(&supervisor_name);
 
-    for (int i = 0; i < worker_count; ++i) {
-        ph_str_value_free(worker_names + i);
-    }
+    if (worker_count) {
+        for (int i = 0; i < worker_count; ++i) {
+            ph_str_value_free(worker_names + i);
+        }
 
-    free(worker_names);
-    free(workers_using_actor_name);
-    free(worker_actors);
+        free(worker_names);
+        free(workers_using_actor_name);
+        free(worker_actors);
+    }
+}
+
+ZEND_BEGIN_ARG_INFO_EX(Supervisor_spawn_arginfo, 0, 0, 1)
+    ZEND_ARG_INFO(0, supervisor)
+    ZEND_ARG_INFO(0, supervisionStrategy)
+    ZEND_ARG_INFO(0, workers)
+ZEND_END_ARG_INFO()
+
+PHP_METHOD(Supervisor, spawn)
+{
+    zend_class_entry *actor_class = ph_Actor_ce;
+    zval *ctor_args = NULL;
+    zend_string *actor_name = NULL;
+
+    ZEND_PARSE_PARAMETERS_START(1, 3)
+        Z_PARAM_CLASS(actor_class)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_ARRAY(ctor_args)
+        Z_PARAM_STR(actor_name)
+    ZEND_PARSE_PARAMETERS_END();
+
+    ph_supervisor_t *supervisor = ph_supervisor_fetch_from_object(Z_OBJ(EX(This)));
+    zval zobj;
+
+    if (object_init_ex(&zobj, ph_ActorRef_ce) != SUCCESS) {
+        zend_throw_exception(zend_ce_exception, "Failed to create an ActorRef object from the given Actor class", 0);
+    } else {
+        ph_actor_ref_create(&zobj, actor_class->name, ctor_args, actor_name, &supervisor->ref);
+        RETVAL_OBJ(Z_OBJ(zobj));
+    }
 }
 
 zend_function_entry Supervisor_methods[] = {
     PHP_ME(Supervisor, __construct, Supervisor___construct_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ME(Supervisor, spawn, Supervisor_spawn_arginfo, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
+
+zend_object *ph_supervisor_ctor(zend_class_entry *entry)
+{
+    ph_supervisor_t *supervisor = ecalloc(1, sizeof(ph_supervisor_t) + zend_object_properties_size(entry));
+
+    zend_object_std_init(&supervisor->obj, entry);
+    object_properties_init(&supervisor->obj, entry);
+
+    supervisor->obj.handlers = &ph_Supervisor_handlers;
+
+    return &supervisor->obj;
+}
 
 void ph_supervisor_ce_init(void)
 {
@@ -211,9 +271,11 @@ void ph_supervisor_ce_init(void)
     INIT_CLASS_ENTRY(ce, "phactor\\Supervisor", Supervisor_methods);
     ph_Supervisor_ce = zend_register_internal_class(&ce);
     ph_Supervisor_ce->ce_flags |= ZEND_ACC_FINAL;
-    // ph_Supervisor_ce->create_object = phactor_actor_ctor;
+    ph_Supervisor_ce->create_object = ph_supervisor_ctor;
 
-    // memcpy(&ph_Supervisor_handlers, zh, sizeof(zend_object_handlers));
+    memcpy(&ph_Supervisor_handlers, zh, sizeof(zend_object_handlers));
+
+    ph_Supervisor_handlers.offset = XtOffsetOf(ph_supervisor_t, obj);
 
     zend_declare_class_constant_long(ph_Supervisor_ce,  ZEND_STRL("ONE_FOR_ONE"), PH_SUPERVISOR_ONE_FOR_ONE);
 }

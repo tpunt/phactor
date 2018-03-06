@@ -156,11 +156,12 @@ int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_a
     return 0;
 }
 
-ph_actor_t *ph_actor_create(ph_string_t *actor_name, ph_entry_t *ctor_args, int ctor_argc)
+ph_actor_t *ph_actor_create(ph_string_t *actor_name, ph_string_t *actor_ref, ph_entry_t *ctor_args, int ctor_argc)
 {
     ph_actor_t *new_actor = calloc(1, sizeof(ph_actor_t));
 
     new_actor->name = actor_name;
+    new_actor->ref = actor_ref;
     new_actor->state = PH_ACTOR_SPAWNING;
     new_actor->ctor_args = ctor_args;
     new_actor->ctor_argc = ctor_argc;

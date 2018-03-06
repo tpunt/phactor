@@ -183,11 +183,17 @@ ph_actor_t *new_actor(ph_task_t *task)
             // Logging it may be the only appropriate scenario, unless we can
             // create an actor that is already linked to a supervisor (where a
             // supervision strategy can be used instead to handle the failure).
+
+            if (new_actor->supervisor) {
+                ph_supervisor_handle_crash(new_actor->supervisor, new_actor);
+            }
             EG(exception) = NULL;
+            new_actor = NULL;
+        } else {
+            zval_ptr_dtor(&retval);
         }
 
         zval_dtor(&fci.function_name);
-        zval_ptr_dtor(&retval);
     }
 
     zend_string_free(class);

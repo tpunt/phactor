@@ -40,6 +40,7 @@ typedef struct _ph_actor_internal_t {
 
 typedef struct _ph_actor_t {
     ph_string_t *name;
+    ph_string_t *ref; // duplicated (for now)
     ph_queue_t mailbox;
     ph_entry_t *ctor_args;
     int ctor_argc;
@@ -54,7 +55,7 @@ typedef struct _ph_actor_t {
 ph_actor_internal_t *ph_actor_internal_retrieve_from_object(zend_object *actor_obj);
 ph_actor_t *ph_actor_retrieve_from_object(zend_object *actor_obj);
 ph_actor_t *ph_actor_retrieve_from_zval(zval *actor_zval_obj);
-ph_actor_t *ph_actor_create(ph_string_t *actor_name, ph_entry_t *ctor_args, int ctor_argc);
+ph_actor_t *ph_actor_create(ph_string_t *actor_name, ph_string_t *actor_ref, ph_entry_t *ctor_args, int ctor_argc);
 void ph_actor_ce_init(void);
 void ph_actor_free(void *actor_void);
 void ph_actor_free_dummy(void *actor_void);

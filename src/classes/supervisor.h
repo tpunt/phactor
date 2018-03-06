@@ -32,6 +32,11 @@ typedef struct _ph_supervision_t {
     ph_hashtable_t *workers;
 } ph_supervision_t;
 
+typedef struct _ph_supervisor_t {
+    ph_string_t ref;
+    zend_object obj;
+} ph_supervisor_t;
+
 void ph_supervisor_ce_init(void);
 void ph_supervisor_handle_crash(struct _ph_actor_t *supervisor, struct _ph_actor_t *crashed_actor);
 

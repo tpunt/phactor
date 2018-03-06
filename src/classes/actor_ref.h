@@ -20,5 +20,6 @@
 #define PH_ACTOR_REF_H
 
 void ph_actor_ref_ce_init(void);
+void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, zend_string *actor_name, ph_string_t *supervisor_ref);
 
 #endif
