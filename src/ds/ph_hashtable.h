@@ -50,6 +50,7 @@ typedef struct _ph_hashtable_t {
 } ph_hashtable_t;
 
 void ph_hashtable_init(ph_hashtable_t *ht, int size, void (*dtor)(void *));
+void ph_hashtable_apply(ph_hashtable_t *ht, void (*apply)(void *));
 void ph_hashtable_insert(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_insert_ind(ph_hashtable_t *ht, long hash, void *value);
 void ph_hashtable_delete(ph_hashtable_t *ht, ph_string_t *key);
@@ -60,6 +61,7 @@ ph_string_t *ph_hashtable_key_fetch(ph_hashtable_t *ht, ph_string_t *key);
 void ph_hashtable_update(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_update_ind(ph_hashtable_t *ht, long hash, void *value);
 void ph_hashtable_destroy(ph_hashtable_t *ht);
+void ph_hashtable_clear(ph_hashtable_t *ht);
 void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht);
 void *ph_hashtable_random_value(ph_hashtable_t *ht);
 void ph_hashtable_delete_n(ph_hashtable_t *ht, int n);

@@ -41,7 +41,7 @@ void ph_hashtable_init(ph_hashtable_t *ht, int size, void (*dtor)(void *))
     pthread_mutex_init(&ht->lock, NULL);
 }
 
-void ph_hashtable_destroy(ph_hashtable_t *ht)
+void ph_hashtable_clear(ph_hashtable_t *ht)
 {
     for (int i = 0; i < ht->size; ++i) {
         ph_bucket_t *b = ht->values + i;
@@ -55,10 +55,36 @@ void ph_hashtable_destroy(ph_hashtable_t *ht)
         if (b->key && ht->flags & FREE_KEYS) {
             ph_str_free(b->key);
         }
+
+        b->key = NULL;
+        b->hash = 0;
+        b->value = NULL;
+        b->variance = 0;
     }
 
+    ht->used = 0;
+}
+
+void ph_hashtable_destroy(ph_hashtable_t *ht)
+{
+    ph_hashtable_clear(ht);
     free(ht->values);
     pthread_mutex_destroy(&ht->lock);
+}
+
+void ph_hashtable_apply(ph_hashtable_t *ht, void (*apply)(void *))
+{
+    for (int i = 0; i < ht->size; ++i) {
+        ph_bucket_t *b = ht->values + i;
+
+        if (!b->value) {
+            continue;
+        }
+
+        apply(b->value);
+    }
+
+    ht->used = 0;
 }
 
 void ph_hashtable_insert_ind(ph_hashtable_t *ht, long hash, void *value)

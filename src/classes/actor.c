@@ -57,6 +57,19 @@ ph_actor_t *ph_actor_retrieve_from_zval(zval *actor_zval_obj)
     return ph_actor_retrieve_from_object(Z_OBJ_P(actor_zval_obj));
 }
 
+void ph_actor_remove_from_table(void *actor_void)
+{
+    ph_actor_t *actor = actor_void;
+
+    // we are already holding the actors_by_ref mutex lock (this function is
+    // called from ph_actor_mark_for_removal(), which is always called by the
+    // actors_by_ref HT deletion function)
+    if (actor->name) {
+        ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_name, actor->name);
+    }
+    ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_ref, actor->ref);
+}
+
 void ph_actor_mark_for_removal(void *actor_void)
 {
     ph_actor_t *actor = actor_void;
@@ -64,6 +77,7 @@ void ph_actor_mark_for_removal(void *actor_void)
     if (!actor->internal) {
         // this can happen when the actor system is shutting down, but new
         // actors are still being created (they never become fully created)
+        // @todo should this be performed asynchronously?
         ph_actor_free(actor_void);
     } else {
         ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->thread_offset;
@@ -71,6 +85,13 @@ void ph_actor_mark_for_removal(void *actor_void)
         pthread_mutex_lock(&actor_removals->lock);
         ph_vector_push(actor_removals, actor);
         pthread_mutex_unlock(&actor_removals->lock);
+
+        if (actor->supervision.workers) {
+            pthread_mutex_lock(&actor->lock);
+            ph_hashtable_apply(actor->supervision.workers, ph_actor_remove_from_table);
+            ph_hashtable_clear(actor->supervision.workers);
+            pthread_mutex_unlock(&actor->lock);
+        }
     }
 }
 

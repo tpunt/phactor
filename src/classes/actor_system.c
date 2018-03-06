@@ -136,7 +136,13 @@ ph_actor_t *new_actor(ph_task_t *task)
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     ph_actor_t *new_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref);
 
-    assert(new_actor);
+    if (!new_actor) {
+        // This branch can be hit when a supervisor dies, where it will kill all
+        // of its workers (this actor being a worker). Just abort it (silently)
+        // @todo log this?
+        zend_string_free(class);
+        return NULL;
+    }
 
     pthread_mutex_lock(&new_actor->lock);
     new_actor->internal = actor_internal;
