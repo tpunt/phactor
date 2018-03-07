@@ -14,6 +14,8 @@ class A extends Actor
 
 class B extends Actor
 {
+    private static $i = 0;
+
     public function __construct()
     {
         var_dump('Creating B');
@@ -21,8 +23,12 @@ class B extends Actor
     public function receive()
     {
         $this->receiveBlock();
-        var_dump('Crashing B');
-        throw new exception();
+        if (self::$i++ < 3) {
+            var_dump('Crashing B');
+            throw new exception();
+        } else {
+            ActorSystem::shutdown();
+        }
     }
 }
 
@@ -30,10 +36,9 @@ class C extends Actor
 {
     public function __construct()
     {
-        for ($i = 0; $i < 3; ++$i) {
+        for ($i = 0; $i < 4; ++$i) {
             $this->send('b', 1);
         }
-        ActorSystem::shutdown();
     }
     public function receive(){}
 }
