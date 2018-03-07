@@ -47,6 +47,7 @@ typedef struct _ph_actor_t {
     int ctor_argc;
     int thread_offset;
     ph_actor_state_t state;
+    int restart_count_streak;
     struct _ph_actor_t *supervisor;
     ph_supervision_t *supervision;
     pthread_mutex_t lock; // @todo remove this and just reuse mailbox lock

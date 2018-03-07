@@ -56,6 +56,7 @@ void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor
     // An advantage of scheduling on the same thread is that we could avoid
     // deallocating, and then reallocating, the virtual machine stack (just
     // reset it instead). If we pooled such things, then it shouldn't matter...
+    // Static member values will only remain the same on the same thread!
     ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + crashed_actor->thread_offset;
 
     pthread_mutex_lock(&thread->tasks.lock);
@@ -65,6 +66,11 @@ void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor
 
 void ph_supervisor_handle_crash(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
 {
+    if (++crashed_actor->restart_count_streak == supervisor->supervision->restart_count_streak_max) {
+        // @todo how should we react? Log it? Crash the supervisor?
+        return;
+    }
+
     switch (supervisor->supervision->strategy) {
         case PH_SUPERVISOR_ONE_FOR_ONE:
             ph_supervisor_one_for_one(supervisor, crashed_actor);
@@ -85,6 +91,7 @@ void ph_supervision_tree_create(ph_actor_t *supervisor, ph_supervision_strategie
 
     supervisor->supervision = malloc(sizeof(ph_supervision_t));
     supervisor->supervision->strategy = strategy;
+    supervisor->supervision->restart_count_streak_max = 5; // @todo should be configurable
     ph_hashtable_init(&supervisor->supervision->workers, size, ph_actor_free_dummy);
 
     for (int i = 0; i < worker_count; ++i) {

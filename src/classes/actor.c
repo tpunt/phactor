@@ -187,6 +187,7 @@ ph_actor_t *ph_actor_create(ph_string_t *name, ph_string_t *ref, ph_string_t *cl
     new_actor->class_name = *class_name;
     new_actor->ctor_args = ctor_args;
     new_actor->ctor_argc = ctor_argc;
+    new_actor->restart_count_streak = 0;
 
     ph_queue_init(&new_actor->mailbox, ph_msg_free);
     pthread_mutex_init(&new_actor->lock, NULL);
@@ -204,6 +205,7 @@ static void receive_block(ph_actor_t *actor, zval *return_value)
     }
 
     actor->state = PH_ACTOR_IDLE;
+    actor->restart_count_streak = 0;
 
     // @todo possible optimisation: if task queue is empty, just skip the next 7 lines
     if (ph_queue_size(&actor->mailbox)) {
