@@ -255,6 +255,7 @@ PHP_METHOD(Supervisor, addWorker)
 
     if (!supervisor) { // supervisor has died already - abort (silently)
         // @todo logging?
+        ph_str_value_free(&worker_name);
         return;
     }
 
@@ -273,6 +274,8 @@ PHP_METHOD(Supervisor, addWorker)
     }
 
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+
+    ph_str_value_free(&worker_name);
 }
 
 ZEND_BEGIN_ARG_INFO_EX(Supervisor_new_worker_arginfo, 0, 0, 1)
