@@ -83,8 +83,6 @@ void ph_hashtable_apply(ph_hashtable_t *ht, void (*apply)(void *))
 
         apply(b->value);
     }
-
-    ht->used = 0;
 }
 
 void ph_hashtable_insert_ind(ph_hashtable_t *ht, long hash, void *value)
