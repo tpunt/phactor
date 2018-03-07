@@ -34,6 +34,8 @@ extern zend_class_entry *ph_ActorRef_ce;
 
 zend_object_handlers ph_Supervisor_handlers;
 zend_class_entry *ph_Supervisor_ce;
+pthread_mutex_t global_tree_number_lock;
+int global_tree_number;
 
 ph_supervisor_t *ph_supervisor_fetch_from_object(zend_object *supervisor_obj)
 {
@@ -90,7 +92,57 @@ void ph_supervision_tree_create(ph_actor_t *supervisor, ph_supervision_strategie
     supervisor->supervision->restart_count_streak_max = 5; // @todo should be configurable
     ph_hashtable_init(&supervisor->supervision->workers, 1, ph_actor_free_dummy);
 
+    pthread_mutex_lock(&global_tree_number_lock);
+    supervisor->supervision->tree_number = global_tree_number++;
+    pthread_mutex_unlock(&global_tree_number_lock);
+
     pthread_mutex_unlock(&supervisor->lock);
+}
+
+void dummy_queue_dtor(void *v) {}
+
+int ph_supervisor_cycle_detection(ph_actor_t *supervisor, ph_actor_t *worker)
+{
+    if (!worker->supervision) {
+        return 0;
+    }
+
+    int cond = 1;
+    int bad_tree_number = supervisor->supervision->tree_number;
+    ph_queue_t queue;
+
+    ph_queue_init(&queue, dummy_queue_dtor); // could be NULL instead
+    ph_queue_push(&queue, worker);
+
+    while (cond) {
+        ph_actor_t *worker = ph_queue_pop(&queue);
+        ph_hashtable_t *ht = &worker->supervision->workers;
+
+        for (int i = 0; i < ht->size; ++i) {
+            ph_bucket_t *b = ht->values + i;
+
+            if (b->value) {
+                ph_actor_t *actor = b->value;
+
+                if (actor->tree_number == bad_tree_number) {
+                    cond = 0;
+                    break;
+                }
+
+                if (actor->supervision) {
+                    ph_queue_push(&queue, actor);
+                }
+            }
+        }
+
+        if (!ph_queue_size(&queue)) {
+            break;
+        }
+    }
+
+    ph_queue_destroy(&queue);
+
+    return !cond;
 }
 
 void ph_supervisor_add_worker(ph_actor_t *supervisor, ph_actor_t *worker)
@@ -99,8 +151,43 @@ void ph_supervisor_add_worker(ph_actor_t *supervisor, ph_actor_t *worker)
     ph_hashtable_insert_ind(&supervisor->supervision->workers, (long)worker, worker);
     pthread_mutex_unlock(&supervisor->lock);
 
+    int new_tree_number = supervisor->supervision->tree_number;
+
     pthread_mutex_lock(&worker->lock);
     worker->supervisor = supervisor;
+    worker->tree_number = new_tree_number;
+
+    if (worker->supervision) {
+        ph_queue_t queue;
+
+        ph_queue_init(&queue, dummy_queue_dtor);
+        ph_queue_push(&queue, worker);
+
+        worker->supervision->tree_number = new_tree_number;
+
+        while (ph_queue_size(&queue)) {
+            ph_actor_t *worker = ph_queue_pop(&queue);
+            ph_hashtable_t *ht = &worker->supervision->workers;
+
+            for (int i = 0; i < ht->size; ++i) {
+                ph_bucket_t *b = ht->values + i;
+
+                if (b->value) {
+                    ph_actor_t *actor = b->value;
+
+                    actor->tree_number = new_tree_number;
+
+                    if (actor->supervision) {
+                        actor->supervision->tree_number = new_tree_number;
+                        ph_queue_push(&queue, actor);
+                    }
+                }
+            }
+        }
+
+        ph_queue_destroy(&queue);
+    }
+
     pthread_mutex_unlock(&worker->lock);
 }
 
@@ -123,7 +210,7 @@ PHP_METHOD(Supervisor, __construct)
     ZEND_PARSE_PARAMETERS_END();
 
     if (!ph_valid_actor_arg(supervisor, &supervisor_using_actor_name, &supervisor_name)) {
-        zend_throw_exception(NULL, "Invalid recipient value", 0);
+        zend_throw_exception(NULL, "Invalid supervisor actor given", 0);
         return;
     }
 
@@ -132,7 +219,7 @@ PHP_METHOD(Supervisor, __construct)
             break;
         default:
             ph_str_value_free(&supervisor_name);
-            zend_throw_exception(NULL, "Invalid supervision strategy", 0);
+            zend_throw_exception(NULL, "Invalid supervision strategy given", 0);
             return;
     }
 
@@ -149,6 +236,13 @@ PHP_METHOD(Supervisor, __construct)
         pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
         ph_str_value_free(&supervisor_name);
         zend_throw_exception(NULL, "Invalid supervisor actor", 0);
+        return;
+    }
+
+    if (supervising_actor->supervision) {
+        pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+        ph_str_value_free(&supervisor_name);
+        zend_throw_exception(NULL, "This actor is already a supervisor", 0);
         return;
     }
 
@@ -203,8 +297,10 @@ PHP_METHOD(Supervisor, addWorker)
 
     if (!worker) {
         zend_throw_exception(NULL, "Invalid worker actor given", 0);
-    } else if (worker == supervisor) { // @todo implement more robustly
-        zend_throw_exception(NULL, "An actor cannot be a worker of itself", 0);
+    } else if (worker->tree_number != -1) {
+        zend_throw_exception(NULL, "This actor is already being supervised", 0);
+    } else if (ph_supervisor_cycle_detection(supervisor, worker)) {
+        zend_throw_exception(NULL, "A cycle has been detected in the supervision tree", 0);
     } else {
         ph_supervisor_add_worker(supervisor, worker);
     }

@@ -31,6 +31,7 @@ typedef struct _ph_supervision_t {
     ph_supervision_strategies_t strategy;
     ph_hashtable_t workers;
     int restart_count_streak_max;
+    int tree_number;
 } ph_supervision_t;
 
 typedef struct _ph_supervisor_t {

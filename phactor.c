@@ -39,6 +39,7 @@
 #endif
 
 extern pthread_mutex_t global_actor_id_lock;
+extern pthread_mutex_t global_tree_number_lock;
 
 ZEND_DECLARE_MODULE_GLOBALS(phactor)
 
@@ -50,6 +51,7 @@ PHP_MINIT_FUNCTION(phactor)
     ph_supervisor_ce_init();
 
     pthread_mutex_init(&global_actor_id_lock, NULL);
+    pthread_mutex_init(&global_tree_number_lock, NULL);
 
     return SUCCESS;
 }
@@ -57,6 +59,7 @@ PHP_MINIT_FUNCTION(phactor)
 PHP_MSHUTDOWN_FUNCTION(phactor)
 {
     pthread_mutex_destroy(&global_actor_id_lock);
+    pthread_mutex_destroy(&global_tree_number_lock);
 
     return SUCCESS;
 }
