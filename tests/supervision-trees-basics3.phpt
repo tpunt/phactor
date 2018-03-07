@@ -1,6 +1,8 @@
 --TEST--
-Basic crashing and restarting of an actor (from within its constructor) with a
-ONE_FOR_ONE supervisor
+Test the new restart limiting of an actor
+--DESCRIPTION--
+If an actor fails to invoke its constructor or receive() method 5 times in a row
+(without invoking receiveblock(), that is), then let it crash permanently.
 --FILE--
 <?php
 
@@ -64,7 +66,7 @@ $s = new Supervisor($a, Supervisor::ONE_FOR_ONE);
 $b1 = $s->newWorker(B1::class, [], 'b1');
 $b2 = $s->newWorker(B2::class, [], 'b2');
 $b3 = $s->newWorker(B3::class, [], 'b3');
---EXPECTF--
+--EXPECT--
 string(10) "Creating B"
 string(10) "Creating B"
 string(10) "Creating B"
