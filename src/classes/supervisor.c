@@ -107,6 +107,17 @@ void ph_supervision_tree_create(ph_actor_t *supervisor, ph_supervision_strategie
     }
 }
 
+void ph_supervisor_add_worker(ph_actor_t *supervisor, ph_actor_t *worker)
+{
+    pthread_mutex_lock(&supervisor->lock);
+    ph_hashtable_insert_ind(&supervisor->supervision->workers, (long)worker, worker);
+    pthread_mutex_unlock(&supervisor->lock);
+
+    pthread_mutex_lock(&worker->lock);
+    worker->supervisor = supervisor;
+    pthread_mutex_unlock(&worker->lock);
+}
+
 ZEND_BEGIN_ARG_INFO_EX(Supervisor___construct_arginfo, 0, 0, 1)
     ZEND_ARG_INFO(0, supervisor)
     ZEND_ARG_INFO(0, supervisionStrategy)
@@ -216,6 +227,54 @@ failure:
     }
 }
 
+ZEND_BEGIN_ARG_INFO_EX(Supervisor_add_worker_arginfo, 0, 0, 1)
+    ZEND_ARG_INFO(0, worker)
+ZEND_END_ARG_INFO()
+
+PHP_METHOD(Supervisor, addWorker)
+{
+    zval *zworker;
+    char worker_using_actor_name;
+    ph_string_t worker_name;
+
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_ZVAL(zworker)
+    ZEND_PARSE_PARAMETERS_END();
+
+    if (!ph_valid_actor_arg(zworker, &worker_using_actor_name, &worker_name)) {
+        zend_throw_exception(NULL, "Invalid worker actor given", 0);
+        return;
+    }
+
+    ph_supervisor_t *supervisor_obj = ph_supervisor_fetch_from_object(Z_OBJ(EX(This)));
+    ph_actor_t *worker, *supervisor;
+
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+
+    supervisor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &supervisor_obj->ref);
+
+    if (!supervisor) { // supervisor has died already - abort (silently)
+        // @todo logging?
+        return;
+    }
+
+    if (worker_using_actor_name) {
+        worker = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, &worker_name);
+    } else {
+        worker = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &worker_name);
+    }
+
+    if (!worker) {
+        zend_throw_exception(NULL, "Invalid worker actor given", 0);
+    } else if (worker == supervisor) { // @todo implement more robustly
+        zend_throw_exception(NULL, "An actor cannot be a worker of itself", 0);
+    } else {
+        ph_supervisor_add_worker(supervisor, worker);
+    }
+
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+}
+
 ZEND_BEGIN_ARG_INFO_EX(Supervisor_new_worker_arginfo, 0, 0, 1)
     ZEND_ARG_INFO(0, supervisor)
     ZEND_ARG_INFO(0, supervisionStrategy)
@@ -249,6 +308,7 @@ PHP_METHOD(Supervisor, newWorker)
 zend_function_entry Supervisor_methods[] = {
     PHP_ME(Supervisor, __construct, Supervisor___construct_arginfo, ZEND_ACC_PUBLIC)
     PHP_ME(Supervisor, newWorker, Supervisor_new_worker_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ME(Supervisor, addWorker, Supervisor_add_worker_arginfo, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 
