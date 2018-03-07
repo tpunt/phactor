@@ -42,12 +42,6 @@ ph_supervisor_t *ph_supervisor_fetch_from_object(zend_object *supervisor_obj)
 
 void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
 {
-    ph_string_t *ref = crashed_actor->internal->ref;
-    zend_string *actor_class = crashed_actor->internal->obj.ce->name;
-    ph_string_t new_actor_class;
-
-    ph_str_set(&new_actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
-
     // @todo mutex lock here is likely not needed, since only
     // this thread will touch these members
     pthread_mutex_lock(&crashed_actor->lock);
@@ -55,13 +49,13 @@ void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor
     crashed_actor->internal = NULL;
     pthread_mutex_unlock(&crashed_actor->lock);
 
-    ph_task_t *task = ph_task_create_new_actor(ref, &new_actor_class);
+    ph_task_t *task = ph_task_create_new_actor(crashed_actor->ref, &crashed_actor->class_name);
 
     // @todo we don't have to schedule the actor to be on the same thread, but
     // for now, we will do
     // An advantage of scheduling on the same thread is that we could avoid
     // deallocating, and then reallocating, the virtual machine stack (just
-    // reset it instead)
+    // reset it instead). If we pooled such things, then it shouldn't matter...
     ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + crashed_actor->thread_offset;
 
     pthread_mutex_lock(&thread->tasks.lock);

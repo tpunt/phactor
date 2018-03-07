@@ -114,7 +114,7 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
     }
 
     ph_task_t *task = ph_task_create_new_actor(new_actor_ref, &new_actor_class);
-    ph_actor_t *new_actor = ph_actor_create(new_actor_name, new_actor_ref, new_ctor_args, new_ctor_argc);
+    ph_actor_t *new_actor = ph_actor_create(new_actor_name, new_actor_ref, &new_actor_class, new_ctor_args, new_ctor_argc);
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     if (supervisor_ref) {
@@ -130,7 +130,6 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
             }
 
             ph_str_free(new_actor_ref);
-            ph_str_value_free(&new_actor_class);
             ph_task_free(task);
 
             return;
@@ -153,7 +152,6 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
 
             ph_str_free(new_actor_name);
             ph_str_free(new_actor_ref);
-            ph_str_value_free(&new_actor_class);
             ph_task_free(task);
 
             return;
