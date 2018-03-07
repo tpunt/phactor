@@ -46,7 +46,8 @@ class C extends Actor
 $a = new ActorRef(A::class, [], 'a');
 $b = new ActorRef(B::class, [], 'b');
 
-$s = new Supervisor($a, Supervisor::ONE_FOR_ONE, $b);
+$s = new Supervisor($a, Supervisor::ONE_FOR_ONE);
+$s->addWorker($b);
 
 $c = new ActorRef(C::class, [], 'c');
 --EXPECT--

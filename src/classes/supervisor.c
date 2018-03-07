@@ -78,33 +78,19 @@ void ph_supervisor_handle_crash(ph_actor_t *supervisor, ph_actor_t *crashed_acto
     }
 }
 
-void ph_supervision_tree_create(ph_actor_t *supervisor, ph_supervision_strategies_t strategy, ph_actor_t **workers, int worker_count)
+void ph_supervision_tree_create(ph_actor_t *supervisor, ph_supervision_strategies_t strategy)
 {
     int size = 2;
 
     // we are already holding the actors_by_ref lock
     pthread_mutex_lock(&supervisor->lock);
 
-    while (size - (size >> 2) < worker_count) {
-        size <<= 1;
-    }
-
     supervisor->supervision = malloc(sizeof(ph_supervision_t));
     supervisor->supervision->strategy = strategy;
     supervisor->supervision->restart_count_streak_max = 5; // @todo should be configurable
-    ph_hashtable_init(&supervisor->supervision->workers, size, ph_actor_free_dummy);
-
-    for (int i = 0; i < worker_count; ++i) {
-        ph_hashtable_insert_ind(&supervisor->supervision->workers, (long)workers[i], workers[i]);
-    }
+    ph_hashtable_init(&supervisor->supervision->workers, 1, ph_actor_free_dummy);
 
     pthread_mutex_unlock(&supervisor->lock);
-
-    for (int i = 0; i < worker_count; ++i) {
-        pthread_mutex_lock(&workers[i]->lock);
-        workers[i]->supervisor = supervisor;
-        pthread_mutex_unlock(&workers[i]->lock);
-    }
 }
 
 void ph_supervisor_add_worker(ph_actor_t *supervisor, ph_actor_t *worker)
@@ -121,23 +107,19 @@ void ph_supervisor_add_worker(ph_actor_t *supervisor, ph_actor_t *worker)
 ZEND_BEGIN_ARG_INFO_EX(Supervisor___construct_arginfo, 0, 0, 1)
     ZEND_ARG_INFO(0, supervisor)
     ZEND_ARG_INFO(0, supervisionStrategy)
-    ZEND_ARG_INFO(0, workers)
 ZEND_END_ARG_INFO()
 
 PHP_METHOD(Supervisor, __construct)
 {
-    zval *supervisor, *workers = NULL;
+    zval *supervisor;
     zend_long supervision_strategy = PH_SUPERVISOR_ONE_FOR_ONE;
-    char supervisor_using_actor_name, *workers_using_actor_name;
-    int worker_count = 0;
-    ph_string_t supervisor_name, *worker_names = NULL;
-    ph_actor_t **worker_actors;
+    char supervisor_using_actor_name;
+    ph_string_t supervisor_name;
 
     ZEND_PARSE_PARAMETERS_START(1, -1)
         Z_PARAM_ZVAL(supervisor)
         Z_PARAM_OPTIONAL
         Z_PARAM_LONG(supervision_strategy)
-        Z_PARAM_VARIADIC('*', workers, worker_count)
     ZEND_PARSE_PARAMETERS_END();
 
     if (!ph_valid_actor_arg(supervisor, &supervisor_using_actor_name, &supervisor_name)) {
@@ -154,20 +136,6 @@ PHP_METHOD(Supervisor, __construct)
             return;
     }
 
-    if (worker_count) {
-        worker_names = malloc(sizeof(ph_string_t) * worker_count);
-        workers_using_actor_name = malloc(sizeof(char) * worker_count);
-        worker_actors = malloc(sizeof(ph_actor_t *) * worker_count);
-
-        for (int i = 0; i < worker_count; ++i) {
-            if (!ph_valid_actor_arg(workers + i, workers_using_actor_name + i, worker_names + i)) {
-                worker_count = i;
-                zend_throw_exception(NULL, "Invalid recipient value", 0);
-                goto failure;
-            }
-        }
-    }
-
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     ph_actor_t *supervising_actor;
 
@@ -179,33 +147,12 @@ PHP_METHOD(Supervisor, __construct)
 
     if (!supervising_actor) {
         pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+        ph_str_value_free(&supervisor_name);
         zend_throw_exception(NULL, "Invalid supervisor actor", 0);
-        goto failure;
+        return;
     }
 
-    if (worker_count) {
-        for (int i = 0; i < worker_count; ++i) {
-            if (workers_using_actor_name[i]) {
-                worker_actors[i] = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, &worker_names[i]);
-            } else {
-                worker_actors[i] = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &worker_names[i]);
-            }
-
-            if (!worker_actors[i]) {
-                pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-                zend_throw_exception(NULL, "Invalid worker actor", 0);
-                goto failure;
-            }
-
-            if (worker_actors[i] == supervising_actor) {
-                pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-                zend_throw_exception(NULL, "An actor cannot be a worker of itself", 0);
-                goto failure;
-            }
-        }
-    }
-
-    ph_supervision_tree_create(supervising_actor, supervision_strategy, worker_actors, worker_count);
+    ph_supervision_tree_create(supervising_actor, supervision_strategy);
 
     ph_supervisor_t *supervisor_obj = ph_supervisor_fetch_from_object(Z_OBJ(EX(This)));
 
@@ -213,18 +160,7 @@ PHP_METHOD(Supervisor, __construct)
 
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-failure:
     ph_str_value_free(&supervisor_name);
-
-    if (worker_count) {
-        for (int i = 0; i < worker_count; ++i) {
-            ph_str_value_free(worker_names + i);
-        }
-
-        free(worker_names);
-        free(workers_using_actor_name);
-        free(worker_actors);
-    }
 }
 
 ZEND_BEGIN_ARG_INFO_EX(Supervisor_add_worker_arginfo, 0, 0, 1)
