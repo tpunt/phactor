@@ -86,10 +86,10 @@ void ph_actor_mark_for_removal(void *actor_void)
         ph_vector_push(actor_removals, actor);
         pthread_mutex_unlock(&actor_removals->lock);
 
-        if (actor->supervision.workers) {
+        if (actor->supervision) {
             pthread_mutex_lock(&actor->lock);
-            ph_hashtable_apply(actor->supervision.workers, ph_actor_remove_from_table);
-            ph_hashtable_clear(actor->supervision.workers);
+            ph_hashtable_apply(&actor->supervision->workers, ph_actor_remove_from_table);
+            ph_hashtable_clear(&actor->supervision->workers);
             pthread_mutex_unlock(&actor->lock);
         }
     }
@@ -129,8 +129,8 @@ void ph_actor_free(void *actor_void)
 
     pthread_mutex_destroy(&actor->lock);
 
-    if (actor->supervision.workers) {
-        ph_hashtable_destroy(actor->supervision.workers);
+    if (actor->supervision) {
+        ph_hashtable_destroy(&actor->supervision->workers);
     }
 
     ph_queue_destroy(&actor->mailbox);

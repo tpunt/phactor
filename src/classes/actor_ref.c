@@ -136,7 +136,7 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
         }
 
         pthread_mutex_lock(&supervisor->lock);
-        ph_hashtable_insert_ind(supervisor->supervision.workers, (long)new_actor, new_actor);
+        ph_hashtable_insert_ind(&supervisor->supervision->workers, (long)new_actor, new_actor);
         pthread_mutex_unlock(&supervisor->lock);
 
         pthread_mutex_lock(&new_actor->lock);

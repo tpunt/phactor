@@ -29,7 +29,7 @@ typedef enum _ph_supervision_strategies_t {
 
 typedef struct _ph_supervision_t {
     ph_supervision_strategies_t strategy;
-    ph_hashtable_t *workers;
+    ph_hashtable_t workers;
 } ph_supervision_t;
 
 typedef struct _ph_supervisor_t {

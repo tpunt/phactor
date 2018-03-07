@@ -65,7 +65,7 @@ void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor
 
 void ph_supervisor_handle_crash(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
 {
-    switch (supervisor->supervision.strategy) {
+    switch (supervisor->supervision->strategy) {
         case PH_SUPERVISOR_ONE_FOR_ONE:
             ph_supervisor_one_for_one(supervisor, crashed_actor);
             break;
@@ -83,12 +83,12 @@ void ph_supervision_tree_create(ph_actor_t *supervisor, ph_supervision_strategie
         size <<= 1;
     }
 
-    supervisor->supervision.strategy = strategy;
-    supervisor->supervision.workers = malloc(sizeof(ph_hashtable_t));
-    ph_hashtable_init(supervisor->supervision.workers, size, ph_actor_free_dummy);
+    supervisor->supervision = malloc(sizeof(ph_supervision_t));
+    supervisor->supervision->strategy = strategy;
+    ph_hashtable_init(&supervisor->supervision->workers, size, ph_actor_free_dummy);
 
     for (int i = 0; i < worker_count; ++i) {
-        ph_hashtable_insert_ind(supervisor->supervision.workers, (long)workers[i], workers[i]);
+        ph_hashtable_insert_ind(&supervisor->supervision->workers, (long)workers[i], workers[i]);
     }
 
     pthread_mutex_unlock(&supervisor->lock);
