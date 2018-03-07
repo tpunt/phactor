@@ -61,9 +61,9 @@ class B3 extends Actor
 
 $a = new ActorRef(A::class, [], 'a');
 $s = new Supervisor($a, Supervisor::ONE_FOR_ONE);
-$b1 = $s->spawn(B1::class, [], 'b1');
-$b2 = $s->spawn(B2::class, [], 'b2');
-$b3 = $s->spawn(B3::class, [], 'b3');
+$b1 = $s->newWorker(B1::class, [], 'b1');
+$b2 = $s->newWorker(B2::class, [], 'b2');
+$b3 = $s->newWorker(B3::class, [], 'b3');
 --EXPECTF--
 string(10) "Creating B"
 string(10) "Creating B"

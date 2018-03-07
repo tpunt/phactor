@@ -216,13 +216,13 @@ failure:
     }
 }
 
-ZEND_BEGIN_ARG_INFO_EX(Supervisor_spawn_arginfo, 0, 0, 1)
+ZEND_BEGIN_ARG_INFO_EX(Supervisor_new_worker_arginfo, 0, 0, 1)
     ZEND_ARG_INFO(0, supervisor)
     ZEND_ARG_INFO(0, supervisionStrategy)
     ZEND_ARG_INFO(0, workers)
 ZEND_END_ARG_INFO()
 
-PHP_METHOD(Supervisor, spawn)
+PHP_METHOD(Supervisor, newWorker)
 {
     zend_class_entry *actor_class = ph_Actor_ce;
     zval *ctor_args = NULL;
@@ -248,7 +248,7 @@ PHP_METHOD(Supervisor, spawn)
 
 zend_function_entry Supervisor_methods[] = {
     PHP_ME(Supervisor, __construct, Supervisor___construct_arginfo, ZEND_ACC_PUBLIC)
-    PHP_ME(Supervisor, spawn, Supervisor_spawn_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ME(Supervisor, newWorker, Supervisor_new_worker_arginfo, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 
