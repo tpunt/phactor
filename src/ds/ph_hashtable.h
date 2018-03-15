@@ -30,9 +30,6 @@
     // for (int i = 0; i < ht.size; ++i) { \
         // ph_bucket_t *b = ht.values + i;
 
-// hash table flags
-#define FREE_KEYS 1 // @todo currently unused - still needed?
-
 typedef struct _ph_bucket_t {
     ph_string_t *key; // @todo remove pointer to key?
     void *value;
@@ -44,7 +41,6 @@ typedef struct _ph_hashtable_t {
     ph_bucket_t *values;
     int size;
     int used;
-    int flags;
     void (*dtor)(void *);
     pthread_mutex_t lock;
 } ph_hashtable_t;
@@ -63,7 +59,5 @@ void ph_hashtable_update_ind(ph_hashtable_t *ht, long hash, void *value);
 void ph_hashtable_destroy(ph_hashtable_t *ht);
 void ph_hashtable_clear(ph_hashtable_t *ht);
 void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht);
-void *ph_hashtable_random_value(ph_hashtable_t *ht);
-void ph_hashtable_delete_n(ph_hashtable_t *ht, int n);
 
 #endif

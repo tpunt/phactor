@@ -36,7 +36,6 @@ void ph_hashtable_init(ph_hashtable_t *ht, int size, void (*dtor)(void *))
     ht->values = calloc(sizeof(ph_bucket_t), size);
     ht->size = size;
     ht->used = 0;
-    ht->flags = 0;
     ht->dtor = dtor;
     pthread_mutex_init(&ht->lock, NULL);
 }
@@ -51,10 +50,6 @@ void ph_hashtable_clear(ph_hashtable_t *ht)
         }
 
         ht->dtor(b->value);
-
-        if (b->key && ht->flags & FREE_KEYS) {
-            ph_str_free(b->key);
-        }
 
         b->key = NULL;
         b->hash = 0;
@@ -292,10 +287,6 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, long hash)
             if (b->hash == hash && !(!!b->key ^ !!key) && (!key || ph_str_eq(b->key, key))) {
                 ht->dtor(b->value);
 
-                if (ht->flags & FREE_KEYS) {
-                    ph_str_free(b->key);
-                }
-
                 b->key = NULL;
                 b->hash = 1; // tombstone
                 b->value = NULL;
@@ -318,32 +309,6 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, long hash)
     }
 }
 
-void ph_hashtable_delete_n(ph_hashtable_t *ht, int n)
-{
-    for (int i = 0; i < ht->size && ht->used && n; ++i) {
-        ph_bucket_t *b = ht->values + i;
-
-        if (b->value) {
-            ht->dtor(b->value);
-
-            if (ht->flags & FREE_KEYS) {
-                ph_str_free(b->key);
-            }
-
-            b->key = NULL;
-            b->hash = 1; // tombstone
-            b->value = NULL;
-            b->variance = 0;
-            --ht->used;
-            --n;
-
-            // @todo implement backtracking?
-        }
-    }
-
-    // @todo hash table downsizing?
-}
-
 void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
 {
     for (int i = 0; i < phht->size; ++i) {
@@ -362,18 +327,4 @@ void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
             _zend_hash_index_add(ht, b->hash, &value ZEND_FILE_LINE_CC);
         }
     }
-}
-
-void *ph_hashtable_random_value(ph_hashtable_t *ht)
-{
-    assert(ht->used);
-
-    // @todo improve?
-    do {
-        int i = rand() % ht->size; // @todo modulo bias
-
-        if (ht->values[i].value) {
-            return ht->values[i].value;
-        }
-    } while (1);
 }
