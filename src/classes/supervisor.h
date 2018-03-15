@@ -42,5 +42,7 @@ typedef struct _ph_supervisor_t {
 void ph_supervisor_ce_init(void);
 void ph_supervisor_handle_crash(struct _ph_actor_t *supervisor, struct _ph_actor_t *crashed_actor);
 void ph_supervisor_add_worker(struct _ph_actor_t *supervisor, struct _ph_actor_t *worker);
+void ph_actor_crash(struct _ph_actor_t *actor);
+void ph_supervisor_one_for_one(void *crashed_actor_void);
 
 #endif

@@ -185,15 +185,8 @@ ph_actor_t *new_actor(ph_task_t *task)
         }
 
         if (EG(exception)) {
-            // @todo what to do in this case?
-            // Logging it may be the only appropriate scenario, unless we can
-            // create an actor that is already linked to a supervisor (where a
-            // supervision strategy can be used instead to handle the failure).
-
-            if (new_actor->supervisor) {
-                ph_supervisor_handle_crash(new_actor->supervisor, new_actor);
-            }
-            EG(exception) = NULL;
+            ph_actor_crash(new_actor);
+            zend_clear_exception();
             new_actor = NULL;
         } else {
             zval_ptr_dtor(&retval);
@@ -203,6 +196,12 @@ ph_actor_t *new_actor(ph_task_t *task)
     }
 
     zend_string_free(class);
+
+    // @todo if a special state was given to restarting actors (such as
+    // PH_ACTOR_RESTARTING), then the hash table traversal could be avoided
+    if (new_actor && new_actor->supervision) {
+        ph_hashtable_apply(&new_actor->supervision->workers, ph_supervisor_one_for_one);
+    }
 
     return new_actor;
 }

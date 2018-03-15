@@ -1,5 +1,5 @@
 --TEST--
-Test the Supervisor::addWorker() method
+Test the error conditions of the supervision tree
 --FILE--
 <?php
 

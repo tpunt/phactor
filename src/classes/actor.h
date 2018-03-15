@@ -27,9 +27,11 @@
 #include "src/classes/supervisor.h"
 
 typedef enum _ph_actor_state_t {
-    PH_ACTOR_SPAWNING, // prevents invoking receiveBlock in the constructor
-    PH_ACTOR_IDLE,     // waiting for something - needs context restoring
-    PH_ACTOR_ACTIVE    // in execution - prevents parallel execution of an actor
+    PH_ACTOR_SPAWNING,   // prevents invoking receiveBlock in the constructor
+    PH_ACTOR_IDLE,       // waiting for something - needs context restoring
+    PH_ACTOR_ACTIVE,     // in execution
+    PH_ACTOR_TERMINATED, // actor terminated by supervisor - await for further action
+    PH_ACTOR_CRASHED     // await for further action (restart or free)
 } ph_actor_state_t;
 
 typedef struct _ph_actor_internal_t {
@@ -68,5 +70,6 @@ void ph_named_actor_remove(void *named_actor_void);
 void ph_actor_mark_for_removal(void *actor_void);
 int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_actor_name);
 void ph_actor_internal_free(ph_actor_internal_t *actor_internal);
+void ph_actor_remove_from_table(void *actor_void);
 
 #endif

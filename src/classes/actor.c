@@ -205,6 +205,11 @@ static void receive_block(ph_actor_t *actor, zval *return_value)
         return;
     }
 
+    if (actor->state != PH_ACTOR_ACTIVE) { // PH_ACTOR_CRASHED or PH_ACTOR_TERMINATED
+        pthread_mutex_unlock(&actor->lock);
+        return;
+    }
+
     actor->state = PH_ACTOR_IDLE;
     actor->restart_count_streak = 0;
 
@@ -274,24 +279,21 @@ void process_message_handler(void)
     zval_ptr_dtor(&retval);
 
     if (EG(exception)) {
-        // @todo save exception message to allow for crash logging?
-        // Also, this probably needs special freeing
-        EG(exception) = NULL;
+        ph_actor_crash(actor);
+        zend_clear_exception();
+    } else {
+        // @todo when actor restarting strategies are implemented, we the
+        // following may need to be skipped past and the actor reschedule for
+        // execution
 
-        if (actor->supervisor) {
-            ph_supervisor_handle_crash(actor->supervisor, actor);
-            goto end;
+        pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+        if (actor->name) {
+            ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_name, actor->name);
         }
+        ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_ref, actor->internal->ref);
+        pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     }
 
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-    if (actor->name) {
-        ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_name, actor->name);
-    }
-    ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_ref, actor->internal->ref);
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-
-end:;
 #ifdef PH_FIXED_STACK_SIZE
     ph_mcontext_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 #endif

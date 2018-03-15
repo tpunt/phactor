@@ -42,13 +42,23 @@ ph_supervisor_t *ph_supervisor_fetch_from_object(zend_object *supervisor_obj)
     return (ph_supervisor_t *)((char *)supervisor_obj - supervisor_obj->handlers->offset);
 }
 
-void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
+void ph_supervisor_one_for_one(void *crashed_actor_void)
 {
+    ph_actor_t *crashed_actor = crashed_actor_void;
+
     // @todo mutex lock here is likely not needed, since only
     // this thread will touch these members
     pthread_mutex_lock(&crashed_actor->lock);
+    if (crashed_actor->state == PH_ACTOR_SPAWNING) {
+        // Hit when a supervisor is being spawned with at least one worker (RC).
+        // The new_actor function needs to invoke this function for any workers,
+        // in case we are going through a supervision tree restart.
+        pthread_mutex_unlock(&crashed_actor->lock);
+        return;
+    }
     ph_actor_internal_free(crashed_actor->internal);
     crashed_actor->internal = NULL;
+    crashed_actor->state = PH_ACTOR_SPAWNING;
     pthread_mutex_unlock(&crashed_actor->lock);
 
     ph_task_t *task = ph_task_create_new_actor(crashed_actor->ref, &crashed_actor->class_name);
@@ -66,17 +76,62 @@ void ph_supervisor_one_for_one(ph_actor_t *supervisor, ph_actor_t *crashed_actor
     pthread_mutex_unlock(&thread->tasks.lock);
 }
 
+void ph_supervisor_dfs_apply(ph_actor_t *supervisor, void (*apply)(void *))
+{
+    if (supervisor->supervision) {
+        ph_hashtable_apply(&supervisor->supervision->workers, apply);
+    }
+}
+
 void ph_supervisor_handle_crash(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
 {
     if (++crashed_actor->restart_count_streak == supervisor->supervision->restart_count_streak_max) {
         // @todo how should we react? Log it? Crash the supervisor?
+        // default to crashing the supervisor
+        // in future, add the abililty to use different restart strategies
+        ph_actor_crash(supervisor);
         return;
     }
 
     switch (supervisor->supervision->strategy) {
         case PH_SUPERVISOR_ONE_FOR_ONE:
-            ph_supervisor_one_for_one(supervisor, crashed_actor);
+            ph_supervisor_one_for_one(crashed_actor);
             break;
+    }
+}
+
+void ph_actor_terminate_workers(void *actor_void)
+{
+    ph_actor_t *actor = actor_void;
+
+    pthread_mutex_lock(&actor->lock);
+    actor->state = PH_ACTOR_TERMINATED;
+    pthread_mutex_unlock(&actor->lock);
+}
+
+// belongs in actor.c ?
+void ph_actor_crash(ph_actor_t *actor)
+{
+    if (actor->state == PH_ACTOR_CRASHED) {
+        return;
+    }
+
+    ph_supervisor_dfs_apply(actor, ph_actor_terminate_workers);
+
+    pthread_mutex_lock(&actor->lock);
+    actor->state = PH_ACTOR_CRASHED;
+    pthread_mutex_unlock(&actor->lock);
+
+    if (actor->supervisor) {
+        ph_supervisor_handle_crash(actor->supervisor, actor);
+    } else {
+        // @todo log crash here
+
+        // dfs post-order traversal to terminate any workers, and then free them
+        pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+        ph_supervisor_dfs_apply(actor, ph_actor_remove_from_table);
+        ph_actor_free(actor);
+        pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     }
 }
 
