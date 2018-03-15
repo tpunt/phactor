@@ -16,10 +16,33 @@
   +----------------------------------------------------------------------+
 */
 
-#ifndef PH_ACTOR_REF_H
-#define PH_ACTOR_REF_H
+#ifndef PH_SUPERVISOR_H
+#define PH_SUPERVISOR_H
 
-void ph_actor_ref_ce_init(void);
-void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, zend_string *actor_name, ph_string_t *supervisor_ref);
+#include "src/ds/ph_hashtable.h"
+
+struct _ph_actor_t;
+
+typedef enum _ph_supervision_strategies_t {
+    PH_SUPERVISOR_ONE_FOR_ONE
+} ph_supervision_strategies_t;
+
+typedef struct _ph_supervision_t {
+    ph_supervision_strategies_t strategy;
+    ph_hashtable_t workers;
+    int restart_count_streak_max;
+    int tree_number;
+} ph_supervision_t;
+
+typedef struct _ph_supervisor_t {
+    ph_string_t ref;
+    zend_object obj;
+} ph_supervisor_t;
+
+void ph_supervisor_ce_init(void);
+void ph_supervisor_handle_crash(struct _ph_actor_t *supervisor, struct _ph_actor_t *crashed_actor);
+void ph_supervisor_add_worker(struct _ph_actor_t *supervisor, struct _ph_actor_t *worker);
+void ph_actor_crash(struct _ph_actor_t *actor);
+void ph_supervisor_one_for_one(void *crashed_actor_void);
 
 #endif

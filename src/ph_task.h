@@ -42,10 +42,7 @@ typedef struct _ph_resume_actor_task_t {
 
 typedef struct _ph_new_actor_task_t {
     ph_string_t *actor_ref;
-    ph_string_t *actor_name;
     ph_string_t actor_class;
-    ph_entry_t *args;
-    int argc;
 } ph_new_actor_task_t;
 
 typedef struct _ph_task_t {
@@ -59,7 +56,7 @@ typedef struct _ph_task_t {
 
 ph_task_t *ph_task_create_send_message(ph_string_t *from_actor_ref, ph_string_t *to_actor_name, int using_actor_name, zval *message);
 ph_task_t *ph_task_create_resume_actor(ph_actor_t *actor);
-ph_task_t *ph_task_create_new_actor(zend_string *actor_class, zval *ctor_args, zend_string *actor_name);
+ph_task_t *ph_task_create_new_actor(ph_string_t *actor_ref, ph_string_t *actor_class);
 void ph_task_free(void *task_void);
 
 #endif

@@ -49,7 +49,7 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
     pthread_mutex_lock(&to_actor->lock);
     ph_queue_push(&to_actor->mailbox, message);
 
-    if (to_actor->state != PH_ACTOR_ACTIVE && ph_queue_size(&to_actor->mailbox) == 1) {
+    if (to_actor->state == PH_ACTOR_IDLE && ph_queue_size(&to_actor->mailbox) == 1) {
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + to_actor->thread_offset;
 
         pthread_mutex_lock(&thread->tasks.lock);
@@ -59,25 +59,8 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
     pthread_mutex_unlock(&to_actor->lock);
 }
 
-void send_remote_message(ph_task_t *task)
+void send_message(ph_task_t *task)
 {
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->lock);
-    if (PHACTOR_G(actor_system)->shutdown) {
-        // The actor system was shut down and the actor being sent to was freed.
-        // This will need to be changed in future.
-        pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
-        return;
-    }
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
-
-    // @todo debugging purposes only - no implementation yet
-    printf("Tried to send a message to a non-existent (or remote) actor\n");
-    assert(0);
-}
-
-zend_bool send_message(ph_task_t *task)
-{
-    zend_bool sent = 1;
     ph_actor_t *actor;
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
@@ -88,17 +71,7 @@ zend_bool send_message(ph_task_t *task)
     }
 
     if (actor) {
-        if (actor == (ph_actor_t *)1) { // Enqueue the message again, since the actor is still being created
-            ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count;
-
-            pthread_mutex_lock(&thread->tasks.lock);
-            ph_queue_push(&thread->tasks, task);
-            pthread_mutex_unlock(&thread->tasks.lock);
-
-            sent = 0;
-        } else {
-            send_local_message(actor, task);
-        }
+        send_local_message(actor, task);
     } else {
         // Actor either didn't exist or no longer exists
         // @todo Perhaps implement logging or something for this scenario?
@@ -106,41 +79,39 @@ zend_bool send_message(ph_task_t *task)
         // objects would come into play
     }
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-
-    return sent;
 }
 
 void process_message(ph_actor_t *for_actor)
 {
-    ph_vmcontext_set(&for_actor->context.vmc);
+    ph_vmcontext_set(&for_actor->internal->context.vmc);
     // swap into process_message_handler
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc);
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->internal->context.mc);
 #else
-    ph_mcontext_start(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, for_actor->context.mc.cb);
-    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->context.mc, 0);
+    ph_mcontext_start(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, for_actor->internal->context.mc.cb);
+    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->internal->context.mc, 0);
 #endif
 }
 
 void resume_actor(ph_actor_t *actor)
 {
-    ph_vmcontext_set(&actor->context.vmc);
+    ph_vmcontext_set(&actor->internal->context.vmc);
     // swap back into receive_block
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc);
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc);
 #else
-    ph_mcontext_resume(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc);
-    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->context.mc, 2);
+    ph_mcontext_resume(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc);
+    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc, 2);
 #endif
 }
+
+static zend_execute_data dummy_execute_data;
 
 ph_actor_t *new_actor(ph_task_t *task)
 {
     ph_string_t actor_class = task->u.nat.actor_class;
     zend_string *class = zend_string_init(PH_STRV(actor_class), PH_STRL(actor_class), 0);
     zend_class_entry *ce = zend_fetch_class_by_name(class, NULL, ZEND_FETCH_CLASS_DEFAULT | ZEND_FETCH_CLASS_EXCEPTION);
-    ph_entry_t *args = task->u.nat.args;
-    int argc = task->u.nat.argc;
     zval zobj;
 
     PHACTOR_ZG(allowed_to_construct_object) = 1;
@@ -157,36 +128,30 @@ ph_actor_t *new_actor(ph_task_t *task)
 
     PHACTOR_ZG(allowed_to_construct_object) = 0;
 
-    ph_actor_t *new_actor = ph_actor_retrieve_from_object(Z_OBJ(zobj));
-    ph_string_t *actor_name = task->u.nat.actor_name;
+    ph_actor_internal_t *actor_internal = ph_actor_internal_retrieve_from_object(Z_OBJ(zobj));
     ph_string_t *actor_ref = task->u.nat.actor_ref;
 
-    // @todo what are the technical reasons for not doing this in phactor_actor_ctor?
-    zend_vm_stack_init();
-    ph_vmcontext_get(&new_actor->context.vmc);
+    actor_internal->ref = actor_ref;
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+    ph_actor_t *new_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref);
 
-    assert(ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref) == (ph_actor_t *)1);
-
-    if (actor_name && ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, actor_name) != (ph_actor_t *)1) {
-        zend_throw_exception_ex(zend_ce_exception, 0, "An actor with the name '%s' already exists\n", PH_STRV_P(actor_name));
+    if (!new_actor) {
+        // This branch can be hit when a supervisor dies, where it will kill all
+        // of its workers (this actor being a worker). Just abort it (silently)
+        // @todo log this?
         zend_string_free(class);
-        ph_actor_free(new_actor);
         return NULL;
     }
 
-    new_actor->name = actor_name;
-    new_actor->ref = actor_ref;
-
-    ph_hashtable_update(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref, new_actor);
-
-    if (actor_name) {
-        ph_hashtable_update(&PHACTOR_G(actor_system)->actors_by_name, actor_name, new_actor);
-    }
+    pthread_mutex_lock(&new_actor->lock);
+    new_actor->internal = actor_internal;
+    pthread_mutex_unlock(&new_actor->lock);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
     zend_function *constructor = Z_OBJ_HT(zobj)->get_constructor(Z_OBJ(zobj));
+    ph_entry_t *args = new_actor->ctor_args;
+    int argc = new_actor->ctor_argc;
 
     if (constructor) {
         int result;
@@ -205,22 +170,38 @@ ph_actor_t *new_actor(ph_task_t *task)
         fci.no_separation = 1;
         ZVAL_STRINGL(&fci.function_name, "__construct", sizeof("__construct") - 1);
 
+        EG(current_execute_data) = &dummy_execute_data;
+
         result = zend_call_function(&fci, NULL);
 
-        if (result == FAILURE) {
-            if (!EG(exception)) {
-                // same as problem above?
-                zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(class), "::", "__construct");
-                zend_string_free(class);
-                return NULL;
-            }
+        EG(current_execute_data) = NULL;
+
+        if (result == FAILURE && !EG(exception)) {
+            // same as problem above?
+            zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(class), "::", "__construct");
+            zval_dtor(&fci.function_name);
+            zend_string_free(class);
+            return NULL;
+        }
+
+        if (EG(exception)) {
+            ph_actor_crash(new_actor);
+            zend_clear_exception();
+            new_actor = NULL;
+        } else {
+            zval_ptr_dtor(&retval);
         }
 
         zval_dtor(&fci.function_name);
-        zval_ptr_dtor(&retval);
     }
 
     zend_string_free(class);
+
+    // @todo if a special state was given to restarting actors (such as
+    // PH_ACTOR_RESTARTING), then the hash table traversal could be avoided
+    if (new_actor && new_actor->supervision) {
+        ph_hashtable_apply(&new_actor->supervision->workers, ph_supervisor_one_for_one);
+    }
 
     return new_actor;
 }
@@ -259,24 +240,16 @@ void message_handling_loop(ph_thread_t *ph_thread)
 
         switch (current_task->type) {
             case PH_SEND_MESSAGE_TASK:
-                if (!send_message(current_task)) {
-                    // skip the freeing of the current task if the message was never sent
-                    // this can occur if an actor is still being spawned
-                    continue;
-                }
+                send_message(current_task);
                 break;
             case PH_RESUME_ACTOR_TASK:
-                {
-                    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &current_task->u.rat.actor_ref);
+                pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+                ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &current_task->u.rat.actor_ref);
+                pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-                    assert(actor && actor != (ph_actor_t *)1); // may change in future
+                assert(actor && actor->internal); // may change in future
 
-                    pthread_mutex_lock(&actor->lock);
-                    actor->state = PH_ACTOR_ACTIVE;
-                    pthread_mutex_unlock(&actor->lock);
-
-                    resume_actor(actor);
-                }
+                resume_actor(actor);
                 break;
             case PH_NEW_ACTOR_TASK:
                 currently_processing_actor = new_actor(current_task);

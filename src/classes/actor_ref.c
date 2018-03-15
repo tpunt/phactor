@@ -39,7 +39,6 @@ int global_actor_id;
 // @todo actually generate UUIDs for remote actors
 static void ph_actor_ref_set(ph_string_t *ref)
 {
-    ref->len = ACTOR_REF_LEN;
     pthread_mutex_lock(&global_actor_id_lock);
     sprintf(ref->val, "%022d%010d", 0, ++global_actor_id);
     pthread_mutex_unlock(&global_actor_id_lock);
@@ -69,70 +68,133 @@ void ph_actor_ref_write_property(zval *object, zval *member, zval *value, void *
     zend_throw_error(zend_ce_error, "Properties on ActorRef objects are not enabled", 0);
 }
 
-void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, zend_string *actor_name)
+void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, zend_string *actor_name, ph_string_t *supervisor_ref)
 {
     if (!PHACTOR_G(actor_system)) {
         zend_throw_exception(zend_ce_error, "The ActorSystem class must first be instantiated", 0);
         return;
     }
 
-    // @todo is this needed - we fetch the class entry in the calling routine
-    // if (!zend_fetch_class_by_name(actor_class, NULL, ZEND_FETCH_CLASS_DEFAULT | ZEND_FETCH_CLASS_EXCEPTION)) {
-    //     return 0;
-    // }
+    ph_entry_t *new_ctor_args = NULL;
+    int new_ctor_argc = 0;
 
-    ph_task_t *task = ph_task_create_new_actor(actor_class, ctor_args, actor_name);
+    if (ctor_args && Z_ARR_P(ctor_args)->nNumUsed) {
+        zval *value;
+        int i = 0;
 
-    if (!task) {
-        zend_throw_exception(zend_ce_error, "Failed to serialise the constructor arguments", 0);
-        return;
+        new_ctor_args = malloc(sizeof(ph_entry_t) * Z_ARR_P(ctor_args)->nNumUsed);
+        new_ctor_argc = Z_ARR_P(ctor_args)->nNumUsed;
+
+        ZEND_HASH_FOREACH_VAL(Z_ARR_P(ctor_args), value) {
+            if (ph_entry_convert_from_zval(new_ctor_args + i, value)) {
+                ++i;
+            } else {
+                zend_throw_error(NULL, "Failed to serialise argument %d of the constructor arguments", i + 1);
+
+                for (int i2 = 0; i2 < i; ++i2) {
+                    ph_entry_value_free(new_ctor_args + i2);
+                }
+
+                free(new_ctor_args);
+
+                return;
+            }
+        } ZEND_HASH_FOREACH_END();
     }
 
-    // set the ref here, rather than before ph_task_create_new_actor in case it fails
-    task->u.nat.actor_ref = ph_str_alloc(ACTOR_REF_LEN);
-    ph_actor_ref_set(task->u.nat.actor_ref);
+    ph_string_t *new_actor_ref = ph_str_alloc(ACTOR_REF_LEN);
+    ph_string_t new_actor_class;
+    ph_string_t *new_actor_name = NULL;
+
+    ph_actor_ref_set(new_actor_ref);
+    ph_str_set(&new_actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
+
+    if (actor_name) {
+        new_actor_name = ph_str_create(ZSTR_VAL(actor_name), ZSTR_LEN(actor_name));
+    }
+
+    ph_task_t *task = ph_task_create_new_actor(new_actor_ref, &new_actor_class);
+    ph_actor_t *new_actor = ph_actor_create(new_actor_name, new_actor_ref, &new_actor_class, new_ctor_args, new_ctor_argc);
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-    if (actor_name) {
-        if (ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, task->u.nat.actor_name)) {
-            zend_throw_exception(zend_ce_error, "An actor with the specified name has already been created", 0);
-            free(task->u.nat.actor_ref);
-            free(task->u.nat.actor_name);
+    if (supervisor_ref) {
+        ph_actor_t *supervisor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, supervisor_ref);
+
+        if (!supervisor) { // supervisor has died already - abort (silently)
+            pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+
+            // @todo logging?
+
+            if (actor_name) {
+                ph_str_free(new_actor_name);
+            }
+
+            ph_str_free(new_actor_ref);
             ph_task_free(task);
+
             return;
         }
 
-        ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_name, task->u.nat.actor_name, (ph_actor_t *)1);
+        ph_supervisor_add_worker(supervisor, new_actor);
     }
 
-    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, task->u.nat.actor_ref, (ph_actor_t *)1);
+    if (actor_name) {
+        if (ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, new_actor_name)) {
+            pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+
+            zend_throw_exception(zend_ce_error, "An actor with the specified name has already been created", 0);
+
+            ph_str_free(new_actor_name);
+            ph_str_free(new_actor_ref);
+            ph_task_free(task);
+
+            return;
+        }
+
+        ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_name, new_actor_name, new_actor);
+    }
+
+    ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, new_actor_ref, new_actor);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
     int thread_offset = php_mt_rand_range(0, PHACTOR_G(actor_system)->thread_count - 1);
     ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + thread_offset;
 
+    new_actor->thread_offset = thread_offset;
+
     pthread_mutex_lock(&thread->tasks.lock);
     ph_queue_push(&thread->tasks, task);
     pthread_mutex_unlock(&thread->tasks.lock);
 
+    zend_class_entry *fake_scope;
+
+    if (supervisor_ref) { // we are not using ActorRef::__construct
+        fake_scope = EG(fake_scope);
+        EG(fake_scope) = ph_ActorRef_ce;
+    }
+
     zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);
     zval zref, value;
     ZVAL_STR(&zref, ref);
-    ZVAL_STRINGL(&value, PH_STRV_P(task->u.nat.actor_ref), PH_STRL_P(task->u.nat.actor_ref));
+    ZVAL_STRINGL(&value, PH_STRV_P(new_actor_ref), PH_STRL_P(new_actor_ref));
 
     zend_std_write_property(zobj, &zref, &value, NULL);
     zend_string_free(ref);
     zend_string_release(Z_STR(value));
 
-    if (task->u.nat.actor_name) {
+    if (actor_name) {
         zend_string *name = zend_string_init(ZEND_STRL("name"), 0);
         zval zname, value;
         ZVAL_STR(&zname, name);
-        ZVAL_STRINGL(&value, PH_STRV_P(task->u.nat.actor_name), PH_STRL_P(task->u.nat.actor_name));
+        ZVAL_STR(&value, actor_name);
 
         zend_std_write_property(zobj, &zname, &value, NULL);
         zend_string_free(name);
-        zend_string_release(Z_STR(value));
+        zend_string_release(actor_name); // @todo needed?
+    }
+
+    if (supervisor_ref) { // we are not using ActorRef::__construct
+        EG(fake_scope) = fake_scope;
     }
 }
 
@@ -155,7 +217,7 @@ PHP_METHOD(ActorRef, __construct)
         Z_PARAM_STR(actor_name)
     ZEND_PARSE_PARAMETERS_END();
 
-    ph_actor_ref_create(getThis(), actor_class->name, ctor_args, actor_name);
+    ph_actor_ref_create(getThis(), actor_class->name, ctor_args, actor_name, NULL);
 }
 
 ZEND_BEGIN_ARG_INFO_EX(ActorRef_get_ref_arginfo, 0, 0, 0)
@@ -216,7 +278,7 @@ PHP_METHOD(ActorRef, fromActor)
         zval zref, value;
 
         ZVAL_STR(&zref, ref);
-        ZVAL_STRINGL(&value, PH_STRV_P(actor->ref), PH_STRL_P(actor->ref));
+        ZVAL_STRINGL(&value, PH_STRV_P(actor->internal->ref), PH_STRL_P(actor->internal->ref));
 
         zend_std_write_property(&zobj, &zref, &value, NULL);
         zend_string_free(ref);
@@ -261,5 +323,7 @@ void ph_actor_ref_ce_init(void)
     ph_ActorRef_handlers.write_property = ph_actor_ref_write_property;
 
     zend_declare_property_string(ph_ActorRef_ce, ZEND_STRL("ref"), "", ZEND_ACC_PROTECTED);
+    Z_TYPE_INFO_P(ph_ActorRef_ce->default_properties_table) = IS_INTERNED_STRING_EX; // RCs on default property values??
     zend_declare_property_string(ph_ActorRef_ce, ZEND_STRL("name"), "", ZEND_ACC_PROTECTED);
+    Z_TYPE_INFO_P(ph_ActorRef_ce->default_properties_table + 1) = IS_INTERNED_STRING_EX; // RCs on default property values??
 }
