@@ -107,6 +107,10 @@ void ph_actor_terminate_workers(void *actor_void)
     pthread_mutex_lock(&actor->lock);
     actor->state = PH_ACTOR_TERMINATED;
     pthread_mutex_unlock(&actor->lock);
+
+    if (actor->supervision) {
+        ph_hashtable_apply(&actor->supervision->workers, ph_actor_terminate_workers);
+    }
 }
 
 // belongs in actor.c ?
@@ -116,21 +120,17 @@ void ph_actor_crash(ph_actor_t *actor)
         return;
     }
 
-    ph_supervisor_dfs_apply(actor, ph_actor_terminate_workers);
+    ph_actor_terminate_workers(actor);
 
-    pthread_mutex_lock(&actor->lock);
-    actor->state = PH_ACTOR_CRASHED;
-    pthread_mutex_unlock(&actor->lock);
+    // should the state be set to crashed?
 
     if (actor->supervisor) {
         ph_supervisor_handle_crash(actor->supervisor, actor);
     } else {
         // @todo log crash here
 
-        // dfs post-order traversal to terminate any workers, and then free them
         pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-        ph_supervisor_dfs_apply(actor, ph_actor_remove_from_table);
-        ph_actor_free(actor);
+        ph_actor_remove_from_table(actor);
         pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     }
 }

@@ -31,7 +31,8 @@ typedef enum _ph_actor_state_t {
     PH_ACTOR_IDLE,       // waiting for something - needs context restoring
     PH_ACTOR_ACTIVE,     // in execution
     PH_ACTOR_TERMINATED, // actor terminated by supervisor - await for further action
-    PH_ACTOR_CRASHED     // await for further action (restart or free)
+    PH_ACTOR_CRASHED,    // await for further action (restart or free)
+    PH_ACTOR_SHUTTING_DOWN
 } ph_actor_state_t;
 
 typedef struct _ph_actor_internal_t {

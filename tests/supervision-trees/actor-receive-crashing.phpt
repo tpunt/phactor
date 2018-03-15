@@ -1,5 +1,5 @@
 --TEST--
-Basic crashing and restarting of an actor with a ONE_FOR_ONE supervisor
+ONE_FOR_ONE actor crashing and restarting (from within receive())
 --FILE--
 <?php
 

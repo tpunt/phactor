@@ -73,26 +73,18 @@ void ph_actor_remove_from_table(void *actor_void)
 void ph_actor_mark_for_removal(void *actor_void)
 {
     ph_actor_t *actor = actor_void;
+    ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->thread_offset;
 
-    if (!actor->internal) {
-        // this can happen when the actor system is shutting down, but new
-        // actors are still being created (they never become fully created)
-        // @todo should this be performed asynchronously?
-        ph_actor_free(actor_void);
-    } else {
-        ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->thread_offset;
+    pthread_mutex_lock(&actor->lock);
+    actor->state = PH_ACTOR_SHUTTING_DOWN;
 
-        pthread_mutex_lock(&actor_removals->lock);
-        ph_vector_push(actor_removals, actor);
-        pthread_mutex_unlock(&actor_removals->lock);
-
-        if (actor->supervision) {
-            pthread_mutex_lock(&actor->lock);
-            ph_hashtable_apply(&actor->supervision->workers, ph_actor_remove_from_table);
-            ph_hashtable_clear(&actor->supervision->workers);
-            pthread_mutex_unlock(&actor->lock);
-        }
+    if (actor->supervision) {
+        ph_hashtable_apply(&actor->supervision->workers, ph_actor_remove_from_table);
+        ph_hashtable_clear(&actor->supervision->workers);
     }
+
+    ph_vector_push(actor_removals, actor);
+    pthread_mutex_unlock(&actor_removals->lock);
 }
 
 static void ph_actor_dtor_object_dummy(zend_object *obj){}
@@ -136,8 +128,10 @@ void ph_actor_free(void *actor_void)
     ph_queue_destroy(&actor->mailbox);
 
     // @todo free actor->name ?
+    // @todo free actor->ref ?
 
-    // see comment in ph_actor_mark_for_removal
+    // this can happen when the actor system is shutting down, but new
+    // actors are still being created (they never become fully created)
     if (actor->internal) {
         ph_actor_internal_free(actor->internal);
     }
@@ -205,7 +199,7 @@ static void receive_block(ph_actor_t *actor, zval *return_value)
         return;
     }
 
-    if (actor->state != PH_ACTOR_ACTIVE) { // PH_ACTOR_CRASHED or PH_ACTOR_TERMINATED
+    if (actor->state != PH_ACTOR_ACTIVE) { // CRASHED, TERMINATED or SHUTTING_DOWN
         pthread_mutex_unlock(&actor->lock);
         return;
     }
@@ -276,14 +270,15 @@ void process_message_handler(void)
     }
 
     zval_dtor(&fci.function_name);
-    zval_ptr_dtor(&retval);
 
     if (EG(exception)) {
         ph_actor_crash(actor);
         zend_clear_exception();
     } else {
-        // @todo when actor restarting strategies are implemented, we the
-        // following may need to be skipped past and the actor reschedule for
+        zval_ptr_dtor(&retval);
+
+        // @todo when actor restarting strategies are implemented, the
+        // following may need to be skipped past and the actor rescheduled for
         // execution
 
         pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);

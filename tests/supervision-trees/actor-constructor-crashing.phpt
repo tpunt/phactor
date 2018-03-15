@@ -1,6 +1,5 @@
 --TEST--
-Basic crashing and restarting of an actor (from within its constructor) with a
-ONE_FOR_ONE supervisor
+ONE_FOR_ONE actor crashing and restarting (from within its constructor)
 --FILE--
 <?php
 
