@@ -61,9 +61,8 @@ void ph_actor_remove_from_table(void *actor_void)
 {
     ph_actor_t *actor = actor_void;
 
-    // we are already holding the actors_by_ref mutex lock (this function is
-    // called from ph_actor_mark_for_removal(), which is always called by the
-    // actors_by_ref HT deletion function)
+    // we will always be holding the actors_by_ref mutex lock when this function
+    // is called
     if (actor->name) {
         ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_name, actor->name);
     }
@@ -82,7 +81,9 @@ void ph_actor_mark_for_removal(void *actor_void)
         ph_hashtable_apply(&actor->supervision->workers, ph_actor_remove_from_table);
         ph_hashtable_clear(&actor->supervision->workers);
     }
+    pthread_mutex_unlock(&actor->lock);
 
+    pthread_mutex_lock(&actor_removals->lock);
     ph_vector_push(actor_removals, actor);
     pthread_mutex_unlock(&actor_removals->lock);
 }
@@ -278,14 +279,11 @@ void process_message_handler(void)
         zval_ptr_dtor(&retval);
 
         // @todo when actor restarting strategies are implemented, the
-        // following may need to be skipped past and the actor rescheduled for
+        // following may need to be skipped and the actor rescheduled for
         // execution
 
         pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-        if (actor->name) {
-            ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_name, actor->name);
-        }
-        ph_hashtable_delete(&PHACTOR_G(actor_system)->actors_by_ref, actor->internal->ref);
+        ph_actor_remove_from_table(actor);
         pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     }
 
