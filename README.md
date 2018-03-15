@@ -12,8 +12,8 @@ Requirements:
  - The Pthread library
 
 Major goals:
- - Stabilise things
- - Implement supervision trees
+ - Stabilise things (on-going)
+ - Implement supervision trees (in progress)
  - Implement remote actors
  - Implement internal non-blocking APIs
 
@@ -117,6 +117,20 @@ abstract class Actor
     // wait for a message
     protected final function receiveBlock(void) : mixed; // returns $message
 }
+
+final class Supervisor
+{
+    public const ONE_FOR_ONE = 0;
+
+    public function __construct(ActorRef|string $supervisor[, int $strategy]);
+
+    // Add a pre-existing actor to the group of supervised workers
+    public function addWorker(ActorRef|string $worker) : void;
+
+    // Creates a new actor, links it to the supervisor, and return its actor reference
+    // This should be used if the actor's constructor may throw an exception
+    public function newWorker(string $actorClass[, array $ctorArgs[, string $actorName]]) : ActorRef;
+}
 ```
 
-All messages and actor constructor arguments (the second parameter of `ActorRef::__construct`) will be serialised.
+All messages and actor constructor arguments (the second parameter of `ActorRef::__construct` and `Supervisor::newWorker`) will be serialised.
