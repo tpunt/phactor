@@ -103,7 +103,8 @@ L2:
 
 #else
 
-#if 0
+# ifdef PH_UNFIXED_STACK_SIZE_SWAP
+
 FN(ph_mcontext_swap)
     pushq %rbp
     movq %rsp, %rbp
@@ -213,7 +214,7 @@ L2:
     ret
     .cfi_endproc
 
-#endif
+# else
 
 FN(ph_mcontext_start)
     pushq %rbp
@@ -337,5 +338,7 @@ FN(ph_mcontext_interrupt)
     popq %rbp
     ret
     .cfi_endproc
+
+# endif
 
 #endif

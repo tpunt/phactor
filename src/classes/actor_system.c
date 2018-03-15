@@ -88,8 +88,11 @@ void process_message(ph_actor_t *for_actor)
 #ifdef PH_FIXED_STACK_SIZE
     ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->internal->context.mc);
 #else
+# ifdef PH_UNFIXED_STACK_SIZE_SWAP
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->internal->context.mc, 0);
+# else
     ph_mcontext_start(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, for_actor->internal->context.mc.cb);
-    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->internal->context.mc, 0);
+# endif
 #endif
 }
 
@@ -100,8 +103,11 @@ void resume_actor(ph_actor_t *actor)
 #ifdef PH_FIXED_STACK_SIZE
     ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc);
 #else
+# ifdef PH_UNFIXED_STACK_SIZE_SWAP
+    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc, 2);
+# else
     ph_mcontext_resume(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc);
-    // ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc, 2);
+# endif
 #endif
 }
 

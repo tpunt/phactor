@@ -224,8 +224,11 @@ static void receive_block(ph_actor_t *actor, zval *return_value)
 #ifdef PH_FIXED_STACK_SIZE
     ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
 #else
+# ifdef PH_UNFIXED_STACK_SIZE_SWAP
+    ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, 1);
+# else
     ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
-    // ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, 1);
+# endif
 #endif
 
     pthread_mutex_lock(&actor->lock);
