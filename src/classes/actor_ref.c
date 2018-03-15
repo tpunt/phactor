@@ -71,7 +71,7 @@ void ph_actor_ref_write_property(zval *object, zval *member, zval *value, void *
 void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, zend_string *actor_name, ph_string_t *supervisor_ref)
 {
     if (!PHACTOR_G(actor_system)) {
-        zend_throw_exception(zend_ce_error, "The ActorSystem class must first be instantiated", 0);
+        zend_throw_error(NULL, "The ActorSystem class must first be instantiated", 0);
         return;
     }
 
@@ -142,7 +142,7 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
         if (ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_name, new_actor_name)) {
             pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-            zend_throw_exception(zend_ce_error, "An actor with the specified name has already been created", 0);
+            zend_throw_error(NULL, "An actor with the specified name has already been created", 0);
 
             ph_str_free(new_actor_name);
             ph_str_free(new_actor_ref);
@@ -271,7 +271,7 @@ PHP_METHOD(ActorRef, fromActor)
     ZEND_PARSE_PARAMETERS_END();
 
     if (object_init_ex(&zobj, ph_ActorRef_ce) != SUCCESS) {
-        zend_throw_exception(zend_ce_exception, "Failed to create an ActorRef object from the given Actor class", 0);
+        zend_throw_exception(NULL, "Failed to create an ActorRef object from the given Actor class", 0);
     } else {
         ph_actor_t *actor = ph_actor_retrieve_from_zval(actor_obj);
         zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);

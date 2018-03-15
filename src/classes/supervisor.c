@@ -265,7 +265,7 @@ PHP_METHOD(Supervisor, __construct)
     ZEND_PARSE_PARAMETERS_END();
 
     if (!ph_valid_actor_arg(supervisor, &supervisor_using_actor_name, &supervisor_name)) {
-        zend_throw_exception(NULL, "Invalid supervisor actor given", 0);
+        zend_throw_error(NULL, "Invalid supervisor actor given", 0);
         return;
     }
 
@@ -274,7 +274,7 @@ PHP_METHOD(Supervisor, __construct)
             break;
         default:
             ph_str_value_free(&supervisor_name);
-            zend_throw_exception(NULL, "Invalid supervision strategy given", 0);
+            zend_throw_error(NULL, "Invalid supervision strategy given", 0);
             return;
     }
 
@@ -290,14 +290,14 @@ PHP_METHOD(Supervisor, __construct)
     if (!supervising_actor) {
         pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
         ph_str_value_free(&supervisor_name);
-        zend_throw_exception(NULL, "Invalid supervisor actor", 0);
+        zend_throw_error(NULL, "Invalid supervisor actor", 0);
         return;
     }
 
     if (supervising_actor->supervision) {
         pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
         ph_str_value_free(&supervisor_name);
-        zend_throw_exception(NULL, "This actor is already a supervisor", 0);
+        zend_throw_error(NULL, "This actor is already a supervisor", 0);
         return;
     }
 
@@ -327,7 +327,7 @@ PHP_METHOD(Supervisor, addWorker)
     ZEND_PARSE_PARAMETERS_END();
 
     if (!ph_valid_actor_arg(zworker, &worker_using_actor_name, &worker_name)) {
-        zend_throw_exception(NULL, "Invalid worker actor given", 0);
+        zend_throw_error(NULL, "Invalid worker actor given", 0);
         return;
     }
 
@@ -351,11 +351,11 @@ PHP_METHOD(Supervisor, addWorker)
     }
 
     if (!worker) {
-        zend_throw_exception(NULL, "Invalid worker actor given", 0);
+        zend_throw_error(NULL, "Invalid worker actor given", 0);
     } else if (worker->tree_number != -1) {
-        zend_throw_exception(NULL, "This actor is already being supervised", 0);
+        zend_throw_error(NULL, "This actor is already being supervised", 0);
     } else if (ph_supervisor_cycle_detection(supervisor, worker)) {
-        zend_throw_exception(NULL, "A cycle has been detected in the supervision tree", 0);
+        zend_throw_error(NULL, "A cycle has been detected in the supervision tree", 0);
     } else {
         ph_supervisor_add_worker(supervisor, worker);
     }
@@ -388,7 +388,7 @@ PHP_METHOD(Supervisor, newWorker)
     zval zobj;
 
     if (object_init_ex(&zobj, ph_ActorRef_ce) != SUCCESS) {
-        zend_throw_exception(zend_ce_exception, "Failed to create an ActorRef object from the given Actor class", 0);
+        zend_throw_exception(NULL, "Failed to create an ActorRef object from the given Actor class", 0);
     } else {
         ph_actor_ref_create(&zobj, actor_class->name, ctor_args, actor_name, &supervisor->ref);
         RETVAL_OBJ(Z_OBJ(zobj));

@@ -36,25 +36,25 @@ $s->addWorker($b);
 
 try {
     new Supervisor(1);
-} catch (Exception $e) {
+} catch (Error $e) {
     var_dump($e->getMessage());
 }
 
 try {
     new Supervisor($a, -1);
-} catch (Exception $e) {
+} catch (Error $e) {
     var_dump($e->getMessage());
 }
 
 try {
     $s->addWorker($a);
-} catch (Exception $e) {
+} catch (Error $e) {
     var_dump($e->getMessage());
 }
 
 try {
     new Supervisor($a, Supervisor::ONE_FOR_ONE);
-} catch (Exception $e) {
+} catch (Error $e) {
     var_dump($e->getMessage());
 }
 
@@ -62,7 +62,7 @@ $s3 = new Supervisor($c, Supervisor::ONE_FOR_ONE);
 
 try {
     $s3->addWorker($b);
-} catch (Exception $e) {
+} catch (Error $e) {
     var_dump($e->getMessage());
 }
 
@@ -71,7 +71,7 @@ $s2->addWorker($c);
 
 try {
     $s3->addWorker($a);
-} catch (Exception $e) {
+} catch (Error $e) {
     var_dump($e->getMessage());
 }
 

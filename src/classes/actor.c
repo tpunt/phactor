@@ -196,7 +196,7 @@ static void receive_block(ph_actor_t *actor, zval *return_value)
     pthread_mutex_lock(&actor->lock);
     if (actor->state == PH_ACTOR_SPAWNING) {
         pthread_mutex_unlock(&actor->lock);
-        zend_throw_exception(zend_ce_exception, "Actor::receiveBlock() cannot be used in the constructor", 0);
+        zend_throw_error(NULL, "Actor::receiveBlock() cannot be used in the constructor", 0);
         return;
     }
 
@@ -305,7 +305,7 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
     actor_internal->obj.handlers = &ph_Actor_handlers;
 
     if (!PHACTOR_ZG(allowed_to_construct_object)) {
-        zend_throw_exception(zend_ce_error, "Actors cannot be created via class instantiation - create an ActorRef object instead", 0);
+        zend_throw_error(NULL, "Actors cannot be created via class instantiation - create an ActorRef object instead", 0);
         return &actor_internal->obj;
     }
 
@@ -338,7 +338,7 @@ PHP_METHOD(Actor, send)
     }
 
     if (!ph_valid_actor_arg(to_actor, &using_actor_name, &to_actor_name)) {
-        zend_throw_exception(NULL, "Invalid recipient value", 0);
+        zend_throw_error(NULL, "Invalid recipient value", 0);
         return;
     }
 

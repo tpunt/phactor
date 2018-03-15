@@ -126,7 +126,7 @@ ph_actor_t *new_actor(ph_task_t *task)
         // @todo this will throw an exception in the new thread, rather than at
         // the call site. This doesn't even have an execution context - how
         // should it behave?
-        zend_throw_exception_ex(zend_ce_exception, 0, "Failed to create an actor from class '%s'\n", ZSTR_VAL(class));
+        zend_throw_exception_ex(NULL, 0, "Failed to create an actor from class '%s'\n", ZSTR_VAL(class));
         zend_string_free(class);
         PHACTOR_ZG(allowed_to_construct_object) = 0;
         return NULL;
