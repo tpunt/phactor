@@ -1,5 +1,5 @@
 --TEST--
-Basics 1 test - ping pong
+Basics 2 test - self-sending
 --DESCRIPTION--
 Test basic message passing
 --FILE--
