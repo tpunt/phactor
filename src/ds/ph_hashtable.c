@@ -308,23 +308,3 @@ void ph_hashtable_delete_direct(ph_hashtable_t *ht, ph_string_t *key, long hash)
         }
     }
 }
-
-void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht)
-{
-    for (int i = 0; i < phht->size; ++i) {
-        ph_bucket_t *b = phht->values + i;
-        zval value;
-
-        if (!b->value) {
-            continue;
-        }
-
-        ph_entry_convert_to_zval(&value, b->value);
-
-        if (b->key) {
-            _zend_hash_str_add(ht, PH_STRV_P(b->key), PH_STRL_P(b->key), &value ZEND_FILE_LINE_CC);
-        } else {
-            _zend_hash_index_add(ht, b->hash, &value ZEND_FILE_LINE_CC);
-        }
-    }
-}

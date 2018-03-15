@@ -58,6 +58,5 @@ void ph_hashtable_update(ph_hashtable_t *ht, ph_string_t *key, void *value);
 void ph_hashtable_update_ind(ph_hashtable_t *ht, long hash, void *value);
 void ph_hashtable_destroy(ph_hashtable_t *ht);
 void ph_hashtable_clear(ph_hashtable_t *ht);
-void ph_hashtable_to_hashtable(HashTable *ht, ph_hashtable_t *phht);
 
 #endif
