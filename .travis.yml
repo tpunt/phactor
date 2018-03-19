@@ -5,8 +5,8 @@ os:
   - osx
 
 compiler:
-#  - gcc
-  - clang
+  - gcc
+#  - clang
 
 php:
   - 7.2
