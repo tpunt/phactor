@@ -1,7 +1,18 @@
 language: php
+
+os:
+  - linux
+#  - osx
+
+compiler:
+  - gcc
+#  - clang
+
 php:
   - 7.2
-  - nightly
+
+before_script:
+  - phpenv config-rm xdebug.ini
 
 script:
   - phpize
