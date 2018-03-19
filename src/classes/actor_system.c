@@ -392,11 +392,19 @@ void scheduler_blocking()
         return;
     }
 
-    // @todo use own specialised loop here? Only messages should need to be
-    // handled in the main thread (for now)
-    message_handling_loop(PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count);
+    if (EG(exit_status) == 255) {
+        for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
+            ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + i;
 
-    while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->finished_thread_count);
+            pthread_kill(thread->pthread, SIGKILL);
+        }
+    } else {
+        // @todo use own specialised loop here? Only messages should need to be
+        // handled in the main thread (for now)
+        message_handling_loop(PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count);
+
+        while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->finished_thread_count);
+    }
 
     ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors_by_name);
     ph_hashtable_destroy(&PHACTOR_G(actor_system)->actors_by_ref);
@@ -409,7 +417,10 @@ void scheduler_blocking()
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + i;
 
         ph_queue_destroy(&thread->tasks);
-        pthread_join(thread->pthread, NULL);
+
+        if (EG(exit_status) != 255) {
+            pthread_join(thread->pthread, NULL);
+        }
     }
 
     PHACTOR_G(actor_system)->initialised = 0;
