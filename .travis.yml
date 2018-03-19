@@ -1,0 +1,10 @@
+language: php
+php:
+  - 7.2
+  - nightly
+
+script:
+  - phpize
+  - ./configure
+  - make
+  - make test
