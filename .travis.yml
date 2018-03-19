@@ -1,8 +1,8 @@
 language: php
 
 os:
-  # - linux
-  - osx
+  - linux
+#  - osx
 
 compiler:
   - gcc
