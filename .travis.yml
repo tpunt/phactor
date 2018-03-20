@@ -2,11 +2,10 @@ language: php
 
 os:
   - linux
-#  - osx
 
 compiler:
   - gcc
-#  - clang
+  - clang
 
 php:
   - 7.2
