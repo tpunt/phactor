@@ -114,8 +114,6 @@ void ph_actor_internal_free(ph_actor_internal_t *actor_internal)
 
     ph_mcontext_free(&actor_internal->context.mc);
 
-    // @todo free actor_internal->ref ?
-
     ph_actor_dtor_object(&actor_internal->obj); // @todo why here and not as an object handler?
 
     efree(actor_internal);
@@ -133,14 +131,19 @@ void ph_actor_free(void *actor_void)
 
     ph_queue_destroy(&actor->mailbox);
 
-    // @todo free actor->name ?
-    // @todo free actor->ref ?
+    if (actor->name) {
+        ph_str_free(actor->name);
+    }
+
+    ph_str_free(actor->ref);
 
     // this can happen when the actor system is shutting down, but new
     // actors are still being created (they never become fully created)
     if (actor->internal) {
         ph_actor_internal_free(actor->internal);
     }
+
+    free(actor);
 }
 
 int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_actor_name)
