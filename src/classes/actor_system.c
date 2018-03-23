@@ -255,6 +255,8 @@ void message_handling_loop(ph_thread_t *ph_thread)
 
                 assert(actor && actor->internal); // may change in future
 
+                ph_str_value_free(&current_task->u.rat.actor_ref);
+
                 resume_actor(actor);
                 break;
             case PH_NEW_ACTOR_TASK:

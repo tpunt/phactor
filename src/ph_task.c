@@ -67,7 +67,10 @@ void ph_task_free(void *task_void)
             ph_entry_free(task->u.smt.message);
             break;
         case PH_NEW_ACTOR_TASK:
-        case PH_RESUME_ACTOR_TASK:;
+            break;
+        case PH_RESUME_ACTOR_TASK:
+            ph_str_value_free(&task->u.rat.actor_ref);
+            break;
     }
 
     free(task);
