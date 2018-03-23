@@ -77,6 +77,11 @@ void ph_actor_mark_for_removal(void *actor_void)
     pthread_mutex_lock(&actor->lock);
     actor->state = PH_ACTOR_SHUTTING_DOWN;
 
+    if (actor->supervisor) {
+        ph_hashtable_delete_ind(&actor->supervisor->supervision->workers, (long)actor);
+        actor->supervisor = NULL;
+    }
+
     if (actor->supervision) {
         ph_hashtable_apply(&actor->supervision->workers, ph_actor_remove_from_table);
         ph_hashtable_clear(&actor->supervision->workers);
