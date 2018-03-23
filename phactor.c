@@ -38,6 +38,10 @@
 # error "TSRMLS static cache is required"
 #endif
 
+#if defined(PH_FIXED_STACK_SIZE) && PH_FIXED_STACK_SIZE < 8192
+# error "The fixed stack size must be at least 8192 bytes"
+#endif
+
 extern pthread_mutex_t global_actor_id_lock;
 extern pthread_mutex_t global_tree_number_lock;
 
