@@ -20,12 +20,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef ZEND_DEBUG
+# include "valgrind/valgrind.h"
+#endif
+
 void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void))
 {
 #ifdef PH_FIXED_STACK_SIZE
     mc->stack_size = PH_FIXED_STACK_SIZE;
     mc->stack_space = calloc(1, mc->stack_size + STACK_ALIGNMENT - 1);
     mc->aligned_stack_space = (void *)((uintptr_t)mc->stack_space + (STACK_ALIGNMENT - 1) & ~(STACK_ALIGNMENT - 1));
+# ifdef ZEND_DEBUG
+    mc->register_valgrind_stack = VALGRIND_STACK_REGISTER(mc->aligned_stack_space, mc->aligned_stack_space + mc->stack_size);
+# endif
 #else
     mc->stack_size = 0;
     mc->stack_space = NULL;
@@ -52,6 +59,9 @@ void ph_mcontext_free(ph_mcontext_t *mc)
 {
 #ifdef PH_FIXED_STACK_SIZE
     free(mc->stack_space);
+# ifdef ZEND_DEBUG
+    VALGRIND_STACK_DEREGISTER(mc->register_valgrind_stack);
+# endif
 #else
     if (mc->stack_space) {
         free(mc->stack_space);

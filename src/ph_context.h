@@ -39,6 +39,9 @@ typedef struct _ph_mcontext_t {
 #ifdef PH_FIXED_STACK_SIZE
     int started; // 108
     void *aligned_stack_space; // 112
+# ifdef ZEND_DEBUG
+    unsigned int register_valgrind_stack;
+# endif
 #endif
 } ph_mcontext_t;
 
