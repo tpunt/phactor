@@ -27,18 +27,6 @@ extern zend_module_entry phactor_module_entry;
 
 #define PHP_PHACTOR_VERSION "0.0.1"
 
-#ifdef PHP_WIN32
-#    define PHP_PHACTOR_API __declspec(dllexport)
-#elif defined(__GNUC__) && __GNUC__ >= 4
-#    define PHP_PHACTOR_API __attribute__ ((visibility("default")))
-#else
-#    define PHP_PHACTOR_API
-#endif
-
-#if defined(COMPILE_DL_PHACTOR)
-ZEND_TSRMLS_CACHE_EXTERN()
-#endif
-
 #define PHACTOR_ZG(v) TSRMG(phactor_globals_id, zend_phactor_globals *, v)
 #define PHACTOR_G(v) v
 
