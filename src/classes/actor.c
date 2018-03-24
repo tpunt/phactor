@@ -331,7 +331,17 @@ zend_object* phactor_actor_ctor(zend_class_entry *entry)
 
     ph_mcontext_init(&actor_internal->context.mc, process_message_handler);
 
-    zend_vm_stack_init();
+    zend_vm_stack page = (zend_vm_stack)emalloc(PH_VM_STACK_SIZE);
+
+    page->top = ZEND_VM_STACK_ELEMENTS(page);
+    page->end = (zval*)((char*)page + PH_VM_STACK_SIZE);
+    page->prev = NULL;
+
+    EG(vm_stack) = page;
+    EG(vm_stack)->top++;
+    EG(vm_stack_top) = EG(vm_stack)->top;
+    EG(vm_stack_end) = EG(vm_stack)->end;
+
     ph_vmcontext_get(&actor_internal->context.vmc);
 
     /*

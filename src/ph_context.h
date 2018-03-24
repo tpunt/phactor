@@ -56,6 +56,8 @@ typedef struct _ph_context_t {
     ph_vmcontext_t vmc;
 } ph_context_t;
 
+#define PH_VM_STACK_SIZE 256 // starting size of PHP's VM stack
+
 #ifdef PH_FIXED_STACK_SIZE
 # define STACK_ALIGNMENT 16 // Ensure 16 byte stack alignment (for OS X)
 
