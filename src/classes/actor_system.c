@@ -247,6 +247,7 @@ void message_handling_loop(ph_thread_t *ph_thread)
         switch (current_task->type) {
             case PH_SEND_MESSAGE_TASK:
                 send_message(current_task);
+                ph_str_value_free(&current_task->u.smt.to_actor_name);
                 break;
             case PH_RESUME_ACTOR_TASK:
                 pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);

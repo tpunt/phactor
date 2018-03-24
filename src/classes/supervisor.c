@@ -414,6 +414,13 @@ zend_object *ph_supervisor_ctor(zend_class_entry *entry)
     return &supervisor->obj;
 }
 
+static void ph_supervisor_free_object(zend_object *obj)
+{
+    ph_supervisor_t *supervisor = (ph_supervisor_t *)((char *)obj - obj->handlers->offset);
+
+    ph_str_value_free(&supervisor->ref);
+}
+
 void ph_supervisor_ce_init(void)
 {
     zend_class_entry ce;
@@ -427,6 +434,7 @@ void ph_supervisor_ce_init(void)
     memcpy(&ph_Supervisor_handlers, zh, sizeof(zend_object_handlers));
 
     ph_Supervisor_handlers.offset = XtOffsetOf(ph_supervisor_t, obj);
+    ph_Supervisor_handlers.free_obj = ph_supervisor_free_object;
 
     zend_declare_class_constant_long(ph_Supervisor_ce,  ZEND_STRL("ONE_FOR_ONE"), PH_SUPERVISOR_ONE_FOR_ONE);
 }

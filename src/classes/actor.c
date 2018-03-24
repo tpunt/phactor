@@ -127,15 +127,25 @@ void ph_actor_free(void *actor_void)
 
     if (actor->supervision) {
         ph_hashtable_destroy(&actor->supervision->workers);
+        free(actor->supervision);
     }
 
     ph_queue_destroy(&actor->mailbox);
+
+    if (actor->ctor_args) {
+        for (int i = 0; i < actor->ctor_argc; ++i) {
+            ph_entry_value_free(actor->ctor_args + i);
+        }
+
+        free(actor->ctor_args);
+    }
 
     if (actor->name) {
         ph_str_free(actor->name);
     }
 
     ph_str_free(actor->ref);
+    ph_str_value_free(&actor->class_name);
 
     // this can happen when the actor system is shutting down, but new
     // actors are still being created (they never become fully created)
