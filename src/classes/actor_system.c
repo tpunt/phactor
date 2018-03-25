@@ -166,7 +166,7 @@ ph_actor_t *new_actor(ph_task_t *task)
         fci.param_count = argc;
         fci.params = zargs;
         fci.no_separation = 1;
-        ZVAL_STRINGL(&fci.function_name, "__construct", sizeof("__construct") - 1);
+        ZVAL_INTERNED_STR(&fci.function_name, common_strings.__construct);
 
         EG(current_execute_data) = &dummy_execute_data;
 
@@ -177,7 +177,6 @@ ph_actor_t *new_actor(ph_task_t *task)
         if (result == FAILURE && !EG(exception)) {
             // same as problem above?
             zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(class), "::", "__construct");
-            zval_dtor(&fci.function_name);
             zend_string_free(class);
             return NULL;
         }
@@ -189,8 +188,6 @@ ph_actor_t *new_actor(ph_task_t *task)
         } else {
             zval_ptr_dtor(&retval);
         }
-
-        zval_dtor(&fci.function_name);
     }
 
     zend_string_free(class);

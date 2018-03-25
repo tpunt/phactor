@@ -45,6 +45,8 @@
 extern pthread_mutex_t global_actor_id_lock;
 extern pthread_mutex_t global_tree_number_lock;
 
+common_strings_t common_strings;
+
 ZEND_DECLARE_MODULE_GLOBALS(phactor)
 
 PHP_MINIT_FUNCTION(phactor)
@@ -57,6 +59,15 @@ PHP_MINIT_FUNCTION(phactor)
     pthread_mutex_init(&global_actor_id_lock, NULL);
     pthread_mutex_init(&global_tree_number_lock, NULL);
 
+    common_strings.receive = zend_string_init(ZEND_STRL("receive"), 1);
+    GC_FLAGS(common_strings.receive) |= IS_STR_INTERNED;
+    common_strings.__construct = zend_string_init(ZEND_STRL("__construct"), 1);
+    GC_FLAGS(common_strings.__construct) |= IS_STR_INTERNED;
+    common_strings.ref = zend_string_init(ZEND_STRL("ref"), 1);
+    GC_FLAGS(common_strings.ref) |= IS_STR_INTERNED;
+    common_strings.name = zend_string_init(ZEND_STRL("name"), 1);
+    GC_FLAGS(common_strings.name) |= IS_STR_INTERNED;
+
     return SUCCESS;
 }
 
@@ -64,6 +75,15 @@ PHP_MSHUTDOWN_FUNCTION(phactor)
 {
     pthread_mutex_destroy(&global_actor_id_lock);
     pthread_mutex_destroy(&global_tree_number_lock);
+
+    GC_FLAGS(common_strings.receive) &= ~IS_STR_INTERNED;
+    zend_string_free(common_strings.receive);
+    GC_FLAGS(common_strings.__construct) &= ~IS_STR_INTERNED;
+    zend_string_free(common_strings.__construct);
+    GC_FLAGS(common_strings.ref) &= ~IS_STR_INTERNED;
+    zend_string_free(common_strings.ref);
+    GC_FLAGS(common_strings.name) &= ~IS_STR_INTERNED;
+    zend_string_free(common_strings.name);
 
     return SUCCESS;
 }

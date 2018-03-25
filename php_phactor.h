@@ -42,4 +42,13 @@ ZEND_BEGIN_MODULE_GLOBALS(phactor)
     int allowed_to_construct_object;
 ZEND_END_MODULE_GLOBALS(phactor)
 
+typedef struct _common_strings_t {
+    zend_string *receive;
+    zend_string *__construct;
+    zend_string *ref;
+    zend_string *name;
+} common_strings_t;
+
+extern common_strings_t common_strings;
+
 #endif

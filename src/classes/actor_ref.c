@@ -173,23 +173,20 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
         EG(fake_scope) = ph_ActorRef_ce;
     }
 
-    zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);
     zval zref, value;
-    ZVAL_STR(&zref, ref);
+
+    ZVAL_INTERNED_STR(&zref, common_strings.ref);
     ZVAL_STRINGL(&value, PH_STRV_P(new_actor_ref), PH_STRL_P(new_actor_ref));
 
     zend_std_write_property(zobj, &zref, &value, NULL);
-    zend_string_free(ref);
     zend_string_release(Z_STR(value));
 
     if (actor_name) {
-        zend_string *name = zend_string_init(ZEND_STRL("name"), 0);
         zval zname, value;
-        ZVAL_STR(&zname, name);
+        ZVAL_INTERNED_STR(&zname, common_strings.name);
         ZVAL_STR(&value, actor_name);
 
         zend_std_write_property(zobj, &zname, &value, NULL);
-        zend_string_free(name);
         zend_string_release(actor_name); // @todo needed?
     }
 
@@ -229,12 +226,11 @@ PHP_METHOD(ActorRef, getRef)
         return;
     }
 
-    zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);
     zval zref, *value;
-    ZVAL_STR(&zref, ref);
+
+    ZVAL_INTERNED_STR(&zref, common_strings.ref);
 
     value = std_object_handlers.read_property(getThis(), &zref, BP_VAR_IS, NULL, NULL);
-    zend_string_free(ref);
 
     *return_value = *value;
 }
@@ -274,24 +270,21 @@ PHP_METHOD(ActorRef, fromActor)
         zend_throw_exception(NULL, "Failed to create an ActorRef object from the given Actor class", 0);
     } else {
         ph_actor_t *actor = ph_actor_retrieve_from_zval(actor_obj);
-        zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);
         zval zref, value;
 
-        ZVAL_STR(&zref, ref);
+        ZVAL_INTERNED_STR(&zref, common_strings.ref);
         ZVAL_STRINGL(&value, PH_STRV_P(actor->internal->ref), PH_STRL_P(actor->internal->ref));
 
         zend_std_write_property(&zobj, &zref, &value, NULL);
-        zend_string_free(ref);
         // zend_string_release(Z_STR(value));
 
         if (actor->name) {
-            zend_string *name = zend_string_init(ZEND_STRL("name"), 0);
             zval zname, value;
-            ZVAL_STR(&zname, name);
+
+            ZVAL_INTERNED_STR(&zname, common_strings.name);
             ZVAL_STRINGL(&value, PH_STRV_P(actor->name), PH_STRL_P(actor->name));
 
             zend_std_write_property(&zobj, &zname, &value, NULL);
-            zend_string_free(name);
             // zend_string_release(Z_STR(value));
         }
 

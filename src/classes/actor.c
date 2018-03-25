@@ -166,11 +166,10 @@ int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_a
     }
 
     if (Z_TYPE_P(to_actor) == IS_OBJECT && instanceof_function(Z_OBJCE_P(to_actor), ph_ActorRef_ce)) {
-        zend_string *ref = zend_string_init(ZEND_STRL("ref"), 0);
         zval zref, *value;
         zend_class_entry *fake_scope = EG(fake_scope);
 
-        ZVAL_STR(&zref, ref);
+        ZVAL_INTERNED_STR(&zref, common_strings.ref);
 
         // fake the scope so that we can fetch the private property
         EG(fake_scope) = ph_ActorRef_ce;
@@ -178,8 +177,6 @@ int ph_valid_actor_arg(zval *to_actor, char *using_actor_name, ph_string_t *to_a
         value = std_object_handlers.read_property(to_actor, &zref, BP_VAR_IS, NULL, NULL);
 
         EG(fake_scope) = fake_scope;
-
-        zend_string_free(ref);
 
         ph_str_set(to_actor_name, Z_STRVAL_P(value), Z_STRLEN_P(value));
         *using_actor_name = 0;
@@ -275,7 +272,7 @@ void process_message_handler(void)
     fci.param_count = 0;
     fci.params = NULL;
     fci.no_separation = 1;
-    ZVAL_STRINGL(&fci.function_name, "receive", sizeof("receive")-1);
+    ZVAL_INTERNED_STR(&fci.function_name, common_strings.receive);
 
     EG(current_execute_data) = &dummy_execute_data;
 
@@ -288,8 +285,6 @@ void process_message_handler(void)
     if (result == FAILURE && !EG(exception)) {
         zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object->ce->name), "::", "receive");
     }
-
-    zval_dtor(&fci.function_name);
 
     if (EG(exception)) {
         ph_actor_crash(actor);
