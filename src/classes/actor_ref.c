@@ -183,6 +183,7 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
 
     if (actor_name) {
         zval zname, value;
+
         ZVAL_INTERNED_STR(&zname, common_strings.name);
         ZVAL_STR(&value, actor_name);
 
@@ -244,12 +245,11 @@ PHP_METHOD(ActorRef, getName)
         return;
     }
 
-    zend_string *ref = zend_string_init(ZEND_STRL("name"), 0);
-    zval zref, *value;
-    ZVAL_STR(&zref, ref);
+    zval zname, *value;
 
-    value = std_object_handlers.read_property(getThis(), &zref, BP_VAR_IS, NULL, NULL);
-    zend_string_free(ref);
+    ZVAL_INTERNED_STR(&zname, common_strings.name);
+
+    value = std_object_handlers.read_property(getThis(), &zname, BP_VAR_IS, NULL, NULL);
 
     *return_value = *value;
 }
