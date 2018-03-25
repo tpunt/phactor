@@ -67,13 +67,9 @@ extern void ph_mcontext_get(ph_mcontext_t *mc);
 extern void ph_mcontext_set(ph_mcontext_t *mc);
 extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
 #else
-# ifdef PH_UNFIXED_STACK_SIZE_SWAP
-extern void ph_mcontext_swap(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc, int action);
-# else
 extern void ph_mcontext_start(ph_mcontext_t *mc, void (*cb)(void));
 extern void ph_mcontext_resume(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
 extern void ph_mcontext_interrupt(ph_mcontext_t *from_mc, ph_mcontext_t *to_mc);
-# endif
 #endif
 void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void));
 void ph_mcontext_reset(ph_mcontext_t *mc);
