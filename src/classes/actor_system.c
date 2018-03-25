@@ -455,6 +455,18 @@ void php_actor_system_free_object(zend_object *obj)
     free(PHACTOR_G(actor_system)->actor_removals);
 }
 
+zval *ph_actor_system_read_property(zval *object, zval *member, int type, void **cache, zval *rv)
+{
+    zend_throw_error(zend_ce_error, "Properties on ActorSystem objects are not enabled", 0);
+
+    return &EG(uninitialized_zval);
+}
+
+void ph_actor_system_write_property(zval *object, zval *member, zval *value, void **cache_slot)
+{
+    zend_throw_error(zend_ce_error, "Properties on ActorSystem objects are not enabled", 0);
+}
+
 ZEND_BEGIN_ARG_INFO(ActorSystem_construct_arginfo, 0)
     ZEND_ARG_INFO(0, thread_count)
 ZEND_END_ARG_INFO()
@@ -534,4 +546,6 @@ void ph_actor_system_ce_init(void)
     ph_ActorSystem_handlers.offset = XtOffsetOf(ph_actor_system_t, obj);
     ph_ActorSystem_handlers.dtor_obj = php_actor_system_dtor_object;
     ph_ActorSystem_handlers.free_obj = php_actor_system_free_object;
+    ph_ActorSystem_handlers.read_property = ph_actor_system_read_property;
+    ph_ActorSystem_handlers.write_property = ph_actor_system_write_property;
 }
