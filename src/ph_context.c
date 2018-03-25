@@ -27,14 +27,15 @@
 void ph_mcontext_init(ph_mcontext_t *mc, void (*cb)(void))
 {
 #ifdef PH_FIXED_STACK_SIZE
-    mc->stack_size = PH_FIXED_STACK_SIZE;
-    mc->stack_space = calloc(1, mc->stack_size + STACK_ALIGNMENT - 1);
+    mc->allocated_stack_size = PH_FIXED_STACK_SIZE;
+    mc->stack_space = calloc(1, mc->allocated_stack_size + STACK_ALIGNMENT - 1);
     mc->aligned_stack_space = (void *)((uintptr_t)mc->stack_space + (STACK_ALIGNMENT - 1) & ~(STACK_ALIGNMENT - 1));
 # ifdef ZEND_DEBUG
-    mc->register_valgrind_stack = VALGRIND_STACK_REGISTER(mc->aligned_stack_space, mc->aligned_stack_space + mc->stack_size);
+    mc->register_valgrind_stack = VALGRIND_STACK_REGISTER(mc->aligned_stack_space, mc->aligned_stack_space + mc->allocated_stack_size);
 # endif
 #else
-    mc->stack_size = 0;
+    mc->allocated_stack_size = 0;
+    mc->used_stack_size = 0;
     mc->stack_space = NULL;
 #endif
     mc->cb = cb;
@@ -50,8 +51,8 @@ void ph_mcontext_reset(ph_mcontext_t *mc)
     mc->started = 0;
 
     // assumes the stack always grows downwards
-    mc->rbp = mc->aligned_stack_space + mc->stack_size;
-    mc->rsp = mc->aligned_stack_space + mc->stack_size;
+    mc->rbp = mc->aligned_stack_space + mc->allocated_stack_size;
+    mc->rsp = mc->aligned_stack_space + mc->allocated_stack_size;
 #endif
 }
 

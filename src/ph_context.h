@@ -35,8 +35,10 @@ typedef struct _ph_mcontext_t {
     void *r15; // 80
     void *stack_space; // 88
     void (*cb)(void); // 96
-    int stack_size; // 104
-#ifdef PH_FIXED_STACK_SIZE
+    int allocated_stack_size; // 104
+#ifndef PH_FIXED_STACK_SIZE
+    int used_stack_size; // 108
+#else
     int started; // 108
     void *aligned_stack_space; // 112
 # ifdef ZEND_DEBUG
