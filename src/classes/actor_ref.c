@@ -115,27 +115,22 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
 
     ph_task_t *task = ph_task_create_new_actor(new_actor_ref, &new_actor_class);
     ph_actor_t *new_actor = ph_actor_create(new_actor_name, new_actor_ref, &new_actor_class, new_ctor_args, new_ctor_argc);
+    ph_actor_t *supervisor = NULL;
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     if (supervisor_ref) {
-        ph_actor_t *supervisor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, supervisor_ref);
+        supervisor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, supervisor_ref);
 
         if (!supervisor) { // supervisor has died already - abort (silently)
             pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
             // @todo logging?
 
-            if (actor_name) {
-                ph_str_free(new_actor_name);
-            }
-
-            ph_str_free(new_actor_ref);
             ph_task_free(task);
+            ph_actor_free(new_actor);
 
             return;
         }
-
-        ph_supervisor_add_worker(supervisor, new_actor);
     }
 
     if (actor_name) {
@@ -144,14 +139,17 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
 
             zend_throw_error(NULL, "An actor with the specified name has already been created", 0);
 
-            ph_str_free(new_actor_name);
-            ph_str_free(new_actor_ref);
             ph_task_free(task);
+            ph_actor_free(new_actor);
 
             return;
         }
 
         ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_name, new_actor_name, new_actor);
+    }
+
+    if (supervisor) {
+        ph_supervisor_add_worker(supervisor, new_actor);
     }
 
     ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, new_actor_ref, new_actor);
