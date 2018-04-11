@@ -102,18 +102,25 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
         } ZEND_HASH_FOREACH_END();
     }
 
-    ph_string_t *new_actor_ref = ph_str_alloc(ACTOR_REF_LEN);
-    ph_string_t new_actor_class;
+    // The _dup are for the new actor task. This avoids the race condition of
+    // destroying an actor before it is fully created (via the new actor task).
+    // This can happen when the actor is registered by a supervisor that is
+    // going to be destroyed soon (before the new actor task is dequeued).
+    ph_string_t *new_actor_ref = ph_str_alloc(ACTOR_REF_LEN), new_actor_ref_dup;
+    ph_string_t new_actor_class, new_actor_class_dup;
     ph_string_t *new_actor_name = NULL;
 
     ph_actor_ref_set(new_actor_ref);
+    ph_str_set(&new_actor_ref_dup, PH_STRV_P(new_actor_ref), PH_STRL_P(new_actor_ref));
+
     ph_str_set(&new_actor_class, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
+    ph_str_set(&new_actor_class_dup, ZSTR_VAL(actor_class), ZSTR_LEN(actor_class));
 
     if (actor_name) {
         new_actor_name = ph_str_create(ZSTR_VAL(actor_name), ZSTR_LEN(actor_name));
     }
 
-    ph_task_t *task = ph_task_create_new_actor(new_actor_ref, &new_actor_class);
+    ph_task_t *task = ph_task_create_new_actor(&new_actor_ref_dup, &new_actor_class_dup);
     ph_actor_t *new_actor = ph_actor_create(new_actor_name, new_actor_ref, &new_actor_class, new_ctor_args, new_ctor_argc);
     ph_actor_t *supervisor = NULL;
 

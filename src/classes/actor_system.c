@@ -127,9 +127,7 @@ ph_actor_t *new_actor(ph_task_t *task)
     PHACTOR_ZG(allowed_to_construct_object) = 0;
 
     ph_actor_internal_t *actor_internal = ph_actor_internal_retrieve_from_object(Z_OBJ(zobj));
-    ph_string_t *actor_ref = task->u.nat.actor_ref;
-
-    actor_internal->ref = actor_ref;
+    ph_string_t *actor_ref = &task->u.nat.actor_ref;
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     ph_actor_t *new_actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, actor_ref);
@@ -141,6 +139,8 @@ ph_actor_t *new_actor(ph_task_t *task)
         zend_string_free(class);
         return NULL;
     }
+
+    actor_internal->ref = new_actor->ref;
 
     pthread_mutex_lock(&new_actor->lock);
     new_actor->internal = actor_internal;

@@ -41,7 +41,7 @@ typedef struct _ph_resume_actor_task_t {
 } ph_resume_actor_task_t;
 
 typedef struct _ph_new_actor_task_t {
-    ph_string_t *actor_ref;
+    ph_string_t actor_ref;
     ph_string_t actor_class;
 } ph_new_actor_task_t;
 

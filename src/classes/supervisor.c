@@ -61,7 +61,12 @@ void ph_supervisor_one_for_one(void *crashed_actor_void)
     crashed_actor->state = PH_ACTOR_SPAWNING;
     pthread_mutex_unlock(&crashed_actor->lock);
 
-    ph_task_t *task = ph_task_create_new_actor(crashed_actor->ref, &crashed_actor->class_name);
+    ph_string_t new_actor_ref, new_actor_class;
+
+    ph_str_set(&new_actor_ref, PH_STRV_P(crashed_actor->ref), PH_STRL_P(crashed_actor->ref));
+    ph_str_set(&new_actor_class, PH_STRV(crashed_actor->class_name), PH_STRL(crashed_actor->class_name));
+
+    ph_task_t *task = ph_task_create_new_actor(&new_actor_ref, &new_actor_class);
 
     // @todo we don't have to schedule the actor to be on the same thread, but
     // for now, we will do

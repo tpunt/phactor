@@ -52,7 +52,7 @@ ph_task_t *ph_task_create_new_actor(ph_string_t *actor_ref, ph_string_t *actor_c
     ph_task_t *new_task = malloc(sizeof(ph_task_t));
 
     new_task->type = PH_NEW_ACTOR_TASK;
-    new_task->u.nat.actor_ref = actor_ref;
+    new_task->u.nat.actor_ref = *actor_ref;
     new_task->u.nat.actor_class = *actor_class;
 
     return new_task;
@@ -67,6 +67,8 @@ void ph_task_free(void *task_void)
             ph_entry_free(task->u.smt.message);
             break;
         case PH_NEW_ACTOR_TASK:
+            ph_str_value_free(&task->u.nat.actor_ref);
+            ph_str_value_free(&task->u.nat.actor_class);
             break;
         case PH_RESUME_ACTOR_TASK:
             ph_str_value_free(&task->u.rat.actor_ref);
