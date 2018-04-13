@@ -193,7 +193,7 @@ ph_actor_t *new_actor(ph_task_t *task)
     zend_string_free(class);
 
     // @todo this may not be a one_for_one restart operation in future
-    if (new_actor && new_actor->state == PH_ACTOR_RESTARTING) {
+    if (new_actor && new_actor->supervision && new_actor->state == PH_ACTOR_RESTARTING) {
         ph_hashtable_apply(&new_actor->supervision->workers, ph_supervisor_one_for_one);
     }
 
