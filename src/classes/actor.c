@@ -47,7 +47,10 @@ ph_actor_t *ph_actor_retrieve_from_object(zend_object *actor_obj)
     actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, ref);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-    assert(actor);
+    // We cannot assert that actor != NULL here, since an actor can be removed
+    // from  the actors_by_ref HT by another thread. This can happen when a
+    // supervisor dies and has its workers removed, where its worker (this
+    // actor) may be trying to interrupt itself or send a new message.
 
     return actor;
 }
@@ -365,6 +368,10 @@ PHP_METHOD(Actor, send)
 
     ph_actor_t *from_actor = ph_actor_retrieve_from_object(Z_OBJ(EX(This)));
 
+    if (!from_actor) {
+        return;
+    }
+
     ph_str_set(&from_actor_ref, PH_STRV_P(from_actor->internal->ref), PH_STRL_P(from_actor->internal->ref));
 
     ph_task_t *task = ph_task_create_send_message(&from_actor_ref, &to_actor_name, using_actor_name, message);
@@ -395,7 +402,11 @@ PHP_METHOD(Actor, receiveBlock)
         return;
     }
 
-    receive_block(ph_actor_retrieve_from_object(Z_OBJ(EX(This))), return_value);
+    ph_actor_t *actor = ph_actor_retrieve_from_object(Z_OBJ(EX(This)));
+
+    if (actor) {
+        receive_block(actor, return_value);
+    }
 }
 
 ZEND_BEGIN_ARG_INFO(Actor_abstract_receive_arginfo, 0)

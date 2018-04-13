@@ -277,6 +277,11 @@ PHP_METHOD(ActorRef, fromActor)
         ph_actor_t *actor = ph_actor_retrieve_from_zval(actor_obj);
         zval zref, value;
 
+        if (!actor) {
+            zend_throw_exception(NULL, "The given actor is being destroyed (the actor's supervisor may have died)", 0);
+            return;
+        }
+
         ZVAL_INTERNED_STR(&zref, common_strings.ref);
         ZVAL_STRINGL(&value, PH_STRV_P(actor->internal->ref), PH_STRL_P(actor->internal->ref));
 
