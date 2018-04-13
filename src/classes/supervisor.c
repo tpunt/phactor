@@ -94,6 +94,11 @@ void ph_actor_terminate_workers(void *actor_void)
     ph_actor_t *actor = actor_void;
 
     pthread_mutex_lock(&actor->lock);
+    if (actor->state == PH_ACTOR_CRASHED) {
+        actor->state = PH_ACTOR_TERMINATED;
+        pthread_mutex_unlock(&actor->lock);
+        return;
+    }
     actor->state = PH_ACTOR_TERMINATED;
     pthread_mutex_unlock(&actor->lock);
 
