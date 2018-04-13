@@ -209,7 +209,7 @@ ph_actor_t *ph_actor_create(ph_string_t *name, ph_string_t *ref, ph_string_t *cl
 static void receive_block(ph_actor_t *actor, zval *return_value)
 {
     pthread_mutex_lock(&actor->lock);
-    if (actor->state == PH_ACTOR_SPAWNING) {
+    if (actor->state == PH_ACTOR_SPAWNING || actor->state == PH_ACTOR_RESTARTING) {
         pthread_mutex_unlock(&actor->lock);
         zend_throw_error(NULL, "Actor::receiveBlock() cannot be used in the constructor", 0);
         return;

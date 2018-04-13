@@ -46,19 +46,10 @@ void ph_supervisor_one_for_one(void *crashed_actor_void)
 {
     ph_actor_t *crashed_actor = crashed_actor_void;
 
-    // @todo mutex lock here is likely not needed, since only
-    // this thread will touch these members
     pthread_mutex_lock(&crashed_actor->lock);
-    if (crashed_actor->state == PH_ACTOR_SPAWNING) {
-        // Hit when a supervisor is being spawned with at least one worker (RC).
-        // The new_actor function needs to invoke this function for any workers,
-        // in case we are going through a supervision tree restart.
-        pthread_mutex_unlock(&crashed_actor->lock);
-        return;
-    }
     ph_actor_internal_free(crashed_actor->internal);
     crashed_actor->internal = NULL;
-    crashed_actor->state = PH_ACTOR_SPAWNING;
+    crashed_actor->state = PH_ACTOR_RESTARTING;
     pthread_mutex_unlock(&crashed_actor->lock);
 
     ph_string_t new_actor_ref, new_actor_class;
