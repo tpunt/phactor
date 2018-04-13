@@ -136,6 +136,7 @@ ph_actor_t *new_actor(ph_task_t *task)
         // This branch can be hit when a supervisor dies, where it will kill all
         // of its workers (this actor being a worker). Just abort it (silently)
         // @todo log this?
+        pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
         zend_string_free(class);
         return NULL;
     }
