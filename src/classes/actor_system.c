@@ -254,6 +254,9 @@ void message_handling_loop(ph_thread_t *ph_thread)
                 if (currently_processing_actor) {
                     process_message(currently_processing_actor);
                 }
+                break;
+            case PH_FREE_VM_STACK_TASK:
+                ph_vmcontext_clear(current_task->u.fvst.vm_stack);
         }
 
         free(current_task);

@@ -93,3 +93,27 @@ void ph_vmcontext_swap(ph_vmcontext_t *from_vmc, ph_vmcontext_t *to_vmc)
     ph_vmcontext_get(from_vmc);
     ph_vmcontext_set(to_vmc);
 }
+
+void ph_vmcontext_clear(zend_vm_stack vm_stack)
+{
+    // free all pages, except for the last one
+    while (vm_stack->prev) {
+        zend_vm_stack prev = vm_stack->prev;
+
+        efree(vm_stack);
+        vm_stack = prev;
+    }
+}
+
+void ph_vmcontext_reset(ph_vmcontext_t *vmc)
+{
+    zend_vm_stack vm_stack = vmc->vm_stack;
+
+    while (vm_stack->prev) {
+        vm_stack = vm_stack->prev;
+    }
+
+    vmc->vm_stack = vm_stack;
+    vmc->vm_stack_top = ZEND_VM_STACK_ELEMENTS(vm_stack);
+    vmc->vm_stack_end = (zval*)((char*)vm_stack + PH_VM_STACK_SIZE);
+}

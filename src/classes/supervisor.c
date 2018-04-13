@@ -45,10 +45,28 @@ ph_supervisor_t *ph_supervisor_fetch_from_object(zend_object *supervisor_obj)
 void ph_supervisor_one_for_one(void *crashed_actor_void)
 {
     ph_actor_t *crashed_actor = crashed_actor_void;
+    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + crashed_actor->thread_offset;
+
+    // @note for now, reschedule the actor on the same thread. This prevents the
+    // need to free the VM stack completely, as well as ensuring static members
+    // retain their values.
 
     pthread_mutex_lock(&crashed_actor->lock);
-    ph_actor_internal_free(crashed_actor->internal);
-    crashed_actor->internal = NULL;
+    // The internal may not have been allocated yet.
+    // This happens when a supervisor crashes when a partially created actor
+    // has been added to its supervision tree, and then the supervision tree
+    // restarts, with the worker actor still not having been fully created.
+    if (crashed_actor->internal) {
+        ph_task_t *reset_vm_stack_task = ph_task_create_vm_stack_free(&crashed_actor->internal->context.vmc);
+
+        pthread_mutex_lock(&thread->tasks.lock);
+        ph_queue_push(&thread->tasks, reset_vm_stack_task);
+        pthread_mutex_unlock(&thread->tasks.lock);
+
+        ph_vmcontext_reset(&crashed_actor->internal->context.vmc);
+        ph_mcontext_reset(&crashed_actor->internal->context.mc); // don't bother freeing the C stack
+    }
+
     crashed_actor->state = PH_ACTOR_RESTARTING;
     pthread_mutex_unlock(&crashed_actor->lock);
 
@@ -58,14 +76,6 @@ void ph_supervisor_one_for_one(void *crashed_actor_void)
     ph_str_set(&new_actor_class, PH_STRV(crashed_actor->class_name), PH_STRL(crashed_actor->class_name));
 
     ph_task_t *task = ph_task_create_new_actor(&new_actor_ref, &new_actor_class);
-
-    // @todo we don't have to schedule the actor to be on the same thread, but
-    // for now, we will do
-    // An advantage of scheduling on the same thread is that we could avoid
-    // deallocating, and then reallocating, the virtual machine stack (just
-    // reset it instead). If we pooled such things, then it shouldn't matter...
-    // Static member values will only remain the same on the same thread!
-    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + crashed_actor->thread_offset;
 
     pthread_mutex_lock(&thread->tasks.lock);
     ph_queue_push(&thread->tasks, task);

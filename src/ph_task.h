@@ -26,7 +26,8 @@
 typedef enum _ph_task_type_t {
     PH_SEND_MESSAGE_TASK,
     PH_RESUME_ACTOR_TASK,
-    PH_NEW_ACTOR_TASK
+    PH_NEW_ACTOR_TASK,
+    PH_FREE_VM_STACK_TASK
 } ph_task_type_t;
 
 typedef struct _ph_send_message_task_t {
@@ -45,11 +46,16 @@ typedef struct _ph_new_actor_task_t {
     ph_string_t actor_class;
 } ph_new_actor_task_t;
 
+typedef struct _ph_free_vm_stack_task_t {
+    zend_vm_stack vm_stack;
+} ph_free_vm_stack_task_t;
+
 typedef struct _ph_task_t {
     union {
         ph_send_message_task_t smt;
         ph_resume_actor_task_t rat;
         ph_new_actor_task_t nat;
+        ph_free_vm_stack_task_t fvst;
     } u;
     ph_task_type_t type;
 } ph_task_t;
@@ -57,6 +63,7 @@ typedef struct _ph_task_t {
 ph_task_t *ph_task_create_send_message(ph_string_t *from_actor_ref, ph_string_t *to_actor_name, int using_actor_name, zval *message);
 ph_task_t *ph_task_create_resume_actor(ph_actor_t *actor);
 ph_task_t *ph_task_create_new_actor(ph_string_t *actor_ref, ph_string_t *actor_class);
+ph_task_t *ph_task_create_vm_stack_free(ph_vmcontext_t *vmc);
 void ph_task_free(void *task_void);
 
 #endif

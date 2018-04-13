@@ -58,6 +58,16 @@ ph_task_t *ph_task_create_new_actor(ph_string_t *actor_ref, ph_string_t *actor_c
     return new_task;
 }
 
+ph_task_t *ph_task_create_vm_stack_free(ph_vmcontext_t *vmc)
+{
+    ph_task_t *new_task = malloc(sizeof(ph_task_t));
+
+    new_task->type = PH_FREE_VM_STACK_TASK;
+    new_task->u.fvst.vm_stack = vmc->vm_stack;
+
+    return new_task;
+}
+
 void ph_task_free(void *task_void)
 {
     ph_task_t *task = task_void;
@@ -72,6 +82,8 @@ void ph_task_free(void *task_void)
             break;
         case PH_RESUME_ACTOR_TASK:
             ph_str_value_free(&task->u.rat.actor_ref);
+            break;
+        case PH_FREE_VM_STACK_TASK:
             break;
     }
 

@@ -78,5 +78,7 @@ void ph_mcontext_free(ph_mcontext_t *mc);
 void ph_vmcontext_get(ph_vmcontext_t *vmc);
 void ph_vmcontext_set(ph_vmcontext_t *vmc);
 void ph_vmcontext_swap(ph_vmcontext_t *from_vmc, ph_vmcontext_t *to_vmc);
+void ph_vmcontext_clear(zend_vm_stack vm_stack);
+void ph_vmcontext_reset(ph_vmcontext_t *vmc);
 
 #endif
