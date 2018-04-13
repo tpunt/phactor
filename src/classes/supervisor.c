@@ -72,13 +72,6 @@ void ph_supervisor_one_for_one(void *crashed_actor_void)
     pthread_mutex_unlock(&thread->tasks.lock);
 }
 
-void ph_supervisor_dfs_apply(ph_actor_t *supervisor, void (*apply)(void *))
-{
-    if (supervisor->supervision) {
-        ph_hashtable_apply(&supervisor->supervision->workers, apply);
-    }
-}
-
 void ph_supervisor_handle_crash(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
 {
     if (++crashed_actor->restart_count_streak == supervisor->supervision->restart_count_streak_max) {
