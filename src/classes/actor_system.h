@@ -23,6 +23,8 @@
 
 #include <main/php.h>
 
+#include <uv.h>
+
 #include "src/ph_context.h"
 #include "src/ds/ph_hashtable.h"
 #include "src/ds/ph_vector.h"
@@ -38,6 +40,7 @@ typedef struct _ph_thread_t {
     int offset;
     void*** ls; // pointer to local storage in TSRM
     ph_context_t context;
+    uv_loop_t event_loop;
 } ph_thread_t;
 
 typedef struct _ph_actor_system_t {

@@ -34,7 +34,6 @@
 #include "src/classes/actor_system.h"
 
 ph_actor_system_t *actor_system;
-__thread ph_actor_t *currently_processing_actor;
 __thread ph_thread_t *thread;
 __thread int thread_offset;
 ph_thread_t main_thread;
@@ -218,6 +217,7 @@ void message_handling_loop(ph_thread_t *ph_thread)
 {
     while (1) {
         perform_actor_removals();
+        uv_run(&ph_thread->event_loop, UV_RUN_ONCE);
 
         pthread_mutex_lock(&ph_thread->tasks.lock);
         ph_task_t *current_task = ph_queue_pop(&ph_thread->tasks);
@@ -246,14 +246,15 @@ void message_handling_loop(ph_thread_t *ph_thread)
                 assert(actor && actor->internal); // may change in future
 
                 ph_str_value_free(&current_task->u.rat.actor_ref);
+                PHACTOR_ZG(currently_executing_actor) = actor;
 
                 resume_actor(actor);
                 break;
             case PH_NEW_ACTOR_TASK:
-                currently_processing_actor = new_actor(current_task);
+                PHACTOR_ZG(currently_executing_actor) = new_actor(current_task);
 
-                if (currently_processing_actor) {
-                    process_message(currently_processing_actor);
+                if (PHACTOR_ZG(currently_executing_actor)) {
+                    process_message(PHACTOR_ZG(currently_executing_actor));
                 }
                 break;
             case PH_FREE_VM_STACK_TASK:
@@ -288,7 +289,11 @@ void *worker_function(ph_thread_t *ph_thread)
 
     ph_vmcontext_get(&ph_thread->context.vmc);
 
+    uv_loop_init(&ph_thread->event_loop);
+
     message_handling_loop(ph_thread);
+
+    uv_loop_close(&ph_thread->event_loop);
 
     PG(report_memleaks) = 0;
 

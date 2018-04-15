@@ -52,6 +52,13 @@ void ph_str_set(ph_string_t *phstr, char *s, int len)
     memcpy(PH_STRV_P(phstr), s, len);
 }
 
+void ph_str_copy(ph_string_t *phstr1, ph_string_t *phstr2)
+{
+    PH_STRL_P(phstr1) = PH_STRL_P(phstr2);
+    PH_STRV_P(phstr1) = malloc(sizeof(char) * PH_STRL_P(phstr2));
+    memcpy(PH_STRV_P(phstr1), PH_STRV_P(phstr2), PH_STRL_P(phstr2));
+}
+
 int ph_str_eq(ph_string_t *phstr1, ph_string_t *phstr2)
 {
     return PH_STRL_P(phstr1) == PH_STRL_P(phstr2) && !strncmp(PH_STRV_P(phstr1), PH_STRV_P(phstr2), PH_STRL_P(phstr2));

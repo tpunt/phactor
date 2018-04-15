@@ -16,25 +16,24 @@
   +----------------------------------------------------------------------+
 */
 
-#ifndef PH_STRING_H
-#define PH_STRING_H
+#ifndef PH_FILE_HANDLE_H
+#define PH_FILE_HANDLE_H
 
-#define PH_STRL(s) (s).len
-#define PH_STRV(s) (s).val
-#define PH_STRL_P(s) PH_STRL(*(s))
-#define PH_STRV_P(s) PH_STRV(*(s))
+#include <uv.h>
 
-typedef struct _ph_string_t {
-    int len;
-    char *val;
-} ph_string_t;
+#include "src/ph_string.h"
 
-ph_string_t *ph_str_alloc(int len);
-ph_string_t *ph_str_create(char *s, int len);
-void ph_str_set(ph_string_t *phstr, char *s, int len);
-void ph_str_copy(ph_string_t *phstr1, ph_string_t *phstr2);
-int ph_str_eq(ph_string_t *phstr1, ph_string_t *phstr2);
-void ph_str_value_free(ph_string_t *phstr);
-void ph_str_free(ph_string_t *phstr);
+typedef struct _ph_file_handle_t {
+    uv_fs_t fs;
+    // uv_fs_event_t event;
+    // uv_pipe_t file_pipe;
+    char *name;
+    // zend_function *read_function;
+    // zend_function *monitor_function;
+    ph_string_t actor_ref;
+    zend_object obj;
+} ph_file_handle_t;
+
+void ph_file_handle_ce_init(void);
 
 #endif

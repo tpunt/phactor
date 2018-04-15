@@ -26,7 +26,6 @@
 #include "src/classes/actor_system.h"
 
 extern ph_actor_system_t *actor_system;
-extern __thread ph_actor_t *currently_processing_actor;
 extern __thread int thread_offset;
 extern zend_class_entry *ph_ActorRef_ce;
 
@@ -258,7 +257,7 @@ static zend_execute_data dummy_execute_data;
 
 void process_message_handler(void)
 {
-    ph_actor_t *actor = currently_processing_actor;
+    ph_actor_t *actor = PHACTOR_ZG(currently_executing_actor);
     zend_object *object = &actor->internal->obj; // from tls
     zend_function *receive_function;
     zend_fcall_info fci;

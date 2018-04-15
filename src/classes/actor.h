@@ -33,6 +33,7 @@ typedef enum _ph_actor_state_t {
     PH_ACTOR_TERMINATED,   // actor terminated by supervisor - await for further action
     PH_ACTOR_CRASHED,      // await for further action (restart or free)
     PH_ACTOR_RESTARTING,   // actor is going through the restart cycle
+    PH_ACTOR_BLOCKING,     // prevents an actor from being rescheduled via a new message
     PH_ACTOR_SHUTTING_DOWN // actor will be destroyed soon
 } ph_actor_state_t;
 
