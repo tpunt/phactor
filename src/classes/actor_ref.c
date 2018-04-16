@@ -162,10 +162,9 @@ void ph_actor_ref_create(zval *zobj, zend_string *actor_class, zval *ctor_args, 
     ph_hashtable_insert(&PHACTOR_G(actor_system)->actors_by_ref, new_actor_ref, new_actor);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-    int thread_offset = php_mt_rand_range(0, PHACTOR_G(actor_system)->thread_count - 1);
-    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + thread_offset;
+    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + php_mt_rand_range(0, PHACTOR_G(actor_system)->thread_count - 1);
 
-    new_actor->thread_offset = thread_offset;
+    new_actor->ph_thread = thread;
 
     pthread_mutex_lock(&thread->tasks.lock);
     ph_queue_push(&thread->tasks, task);

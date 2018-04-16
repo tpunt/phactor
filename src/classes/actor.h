@@ -26,6 +26,8 @@
 #include "src/ds/ph_hashtable.h"
 #include "src/classes/supervisor.h"
 
+struct _ph_thread_t;
+
 typedef enum _ph_actor_state_t {
     PH_ACTOR_SPAWNING,     // prevents invoking receiveBlock in the constructor
     PH_ACTOR_IDLE,         // waiting for something - needs context restoring
@@ -50,7 +52,7 @@ typedef struct _ph_actor_t {
     ph_string_t class_name;
     ph_entry_t *ctor_args;
     int ctor_argc;
-    int thread_offset;
+    struct _ph_thread_t *ph_thread;
     ph_actor_state_t state;
     int restart_count_streak;
     int tree_number;

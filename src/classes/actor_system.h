@@ -40,6 +40,7 @@ typedef struct _ph_thread_t {
     int offset;
     void*** ls; // pointer to local storage in TSRM
     ph_context_t context;
+    ph_vector_t actor_removals;
     uv_loop_t event_loop;
 } ph_thread_t;
 
@@ -53,7 +54,6 @@ typedef struct _ph_actor_system_t {
     int prepared_thread_count;
     int finished_thread_count;
     ph_thread_t *worker_threads;
-    ph_vector_t *actor_removals; // @todo why not put this in ph_thread_t instead?
     pthread_mutex_t lock;
     zend_object obj;
 } ph_actor_system_t;

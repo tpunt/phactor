@@ -36,6 +36,7 @@ extern zend_module_entry phactor_module_entry;
 #define PHACTOR_SG(ls, v) PHACTOR_CTX(ls, sapi_globals_id, sapi_globals_struct*, v)
 
 struct _ph_actor_t;
+struct _ph_thread_t;
 
 ZEND_EXTERN_MODULE_GLOBALS(phactor)
 
@@ -43,6 +44,7 @@ ZEND_BEGIN_MODULE_GLOBALS(phactor)
     HashTable op_array_file_names;
     int allowed_to_construct_object;
     struct _ph_actor_t *currently_executing_actor;
+    struct _ph_thread_t *ph_thread;
 ZEND_END_MODULE_GLOBALS(phactor)
 
 typedef struct _common_strings_t {

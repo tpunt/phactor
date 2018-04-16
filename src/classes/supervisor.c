@@ -45,7 +45,7 @@ ph_supervisor_t *ph_supervisor_fetch_from_object(zend_object *supervisor_obj)
 void ph_supervisor_one_for_one(void *crashed_actor_void)
 {
     ph_actor_t *crashed_actor = crashed_actor_void;
-    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + crashed_actor->thread_offset;
+    ph_thread_t *thread = crashed_actor->ph_thread;
 
     // @note for now, reschedule the actor on the same thread. This prevents the
     // need to free the VM stack completely, as well as ensuring static members

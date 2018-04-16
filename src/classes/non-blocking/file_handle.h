@@ -26,8 +26,11 @@
 typedef struct _ph_file_handle_t {
     uv_fs_t fs;
     // uv_fs_event_t event;
-    // uv_pipe_t file_pipe;
+    uv_pipe_t file_pipe;
     char *name;
+    char *buffer;
+    zend_long buffer_size;
+    zend_long file_size;
     // zend_function *read_function;
     // zend_function *monitor_function;
     ph_string_t actor_ref;

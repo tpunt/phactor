@@ -34,8 +34,6 @@
 #include "src/classes/actor_system.h"
 
 ph_actor_system_t *actor_system;
-__thread ph_thread_t *thread;
-__thread int thread_offset;
 ph_thread_t main_thread;
 
 zend_object_handlers ph_ActorSystem_handlers;
@@ -49,11 +47,9 @@ void send_local_message(ph_actor_t *to_actor, ph_task_t *task)
     ph_queue_push(&to_actor->mailbox, message);
 
     if (to_actor->state == PH_ACTOR_IDLE && ph_queue_size(&to_actor->mailbox) == 1) {
-        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + to_actor->thread_offset;
-
-        pthread_mutex_lock(&thread->tasks.lock);
-        ph_queue_push(&thread->tasks, ph_task_create_resume_actor(to_actor));
-        pthread_mutex_unlock(&thread->tasks.lock);
+        pthread_mutex_lock(&to_actor->ph_thread->tasks.lock);
+        ph_queue_push(&to_actor->ph_thread->tasks, ph_task_create_resume_actor(to_actor));
+        pthread_mutex_unlock(&to_actor->ph_thread->tasks.lock);
     }
     pthread_mutex_unlock(&to_actor->lock);
 }
@@ -85,9 +81,9 @@ void process_message(ph_actor_t *for_actor)
     ph_vmcontext_set(&for_actor->internal->context.vmc);
     // swap into process_message_handler
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &for_actor->internal->context.mc);
+    ph_mcontext_swap(&PHACTOR_ZG(ph_thread)->context.mc, &for_actor->internal->context.mc);
 #else
-    ph_mcontext_start(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, for_actor->internal->context.mc.cb);
+    ph_mcontext_start(&PHACTOR_ZG(ph_thread)->context.mc, for_actor->internal->context.mc.cb);
 #endif
 }
 
@@ -96,9 +92,9 @@ void resume_actor(ph_actor_t *actor)
     ph_vmcontext_set(&actor->internal->context.vmc);
     // swap back into receive_block
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_swap(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc);
+    ph_mcontext_swap(&PHACTOR_ZG(ph_thread)->context.mc, &actor->internal->context.mc);
 #else
-    ph_mcontext_resume(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc, &actor->internal->context.mc);
+    ph_mcontext_resume(&PHACTOR_ZG(ph_thread)->context.mc, &actor->internal->context.mc);
 #endif
 }
 
@@ -202,7 +198,7 @@ ph_actor_t *new_actor(ph_task_t *task)
 
 void perform_actor_removals(void)
 {
-    ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + thread_offset;
+    ph_vector_t *actor_removals = &PHACTOR_ZG(ph_thread)->actor_removals;
 
     pthread_mutex_lock(&actor_removals->lock);
 
@@ -267,8 +263,6 @@ void message_handling_loop(ph_thread_t *ph_thread)
 
 void *worker_function(ph_thread_t *ph_thread)
 {
-    thread_offset = ph_thread->offset;
-    thread = ph_thread;
     ph_thread->id = (ulong) pthread_self();
     ph_thread->ls = ts_resource(0);
 
@@ -288,6 +282,7 @@ void *worker_function(ph_thread_t *ph_thread)
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->lock);
 
     ph_vmcontext_get(&ph_thread->context.vmc);
+    PHACTOR_ZG(ph_thread) = ph_thread;
 
     uv_loop_init(&ph_thread->event_loop);
 
@@ -335,9 +330,9 @@ void initialise_actor_system(zend_long thread_count)
     PHACTOR_G(actor_system)->thread_count = thread_count;
     PHACTOR_G(main_thread).id = (ulong) pthread_self();
     PHACTOR_G(main_thread).ls = TSRMLS_CACHE;
-    PHACTOR_G(actor_system)->actor_removals = calloc(sizeof(ph_vector_t), PHACTOR_G(actor_system)->thread_count + 1);
     PHACTOR_G(actor_system)->worker_threads = calloc(sizeof(ph_thread_t), PHACTOR_G(actor_system)->thread_count + 1);
     pthread_mutex_init(&PHACTOR_G(actor_system)->lock, NULL);
+    PHACTOR_ZG(ph_thread) = PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count;
 
     for (int i = 0; i <= PHACTOR_G(actor_system)->thread_count; ++i) {
         ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + i;
@@ -346,13 +341,10 @@ void initialise_actor_system(zend_long thread_count)
         ph_queue_init(&thread->tasks, ph_task_free);
 
         if (i != PHACTOR_G(actor_system)->thread_count) {
-            ph_vector_init(PHACTOR_G(actor_system)->actor_removals + i, 4, ph_actor_free);
+            ph_vector_init(&thread->actor_removals, 4, ph_actor_free);
             pthread_create(&thread->pthread, NULL, (void *) worker_function, thread);
         }
     }
-
-    thread_offset = PHACTOR_G(actor_system)->thread_count;
-    thread = PHACTOR_G(actor_system)->worker_threads + PHACTOR_G(actor_system)->thread_count;
 
     while (PHACTOR_G(actor_system)->thread_count != PHACTOR_G(actor_system)->prepared_thread_count);
 
@@ -454,13 +446,12 @@ void php_actor_system_dtor_object(zend_object *obj)
 void php_actor_system_free_object(zend_object *obj)
 {
     for (int i = 0; i < PHACTOR_G(actor_system)->thread_count; ++i) {
-        ph_vector_destroy(PHACTOR_G(actor_system)->actor_removals + i);
+        ph_vector_destroy(&(PHACTOR_G(actor_system)->worker_threads + i)->actor_removals);
     }
 
     pthread_mutex_destroy(&PHACTOR_G(actor_system)->lock);
 
     free(PHACTOR_G(actor_system)->worker_threads);
-    free(PHACTOR_G(actor_system)->actor_removals);
 }
 
 zval *ph_actor_system_read_property(zval *object, zval *member, int type, void **cache, zval *rv)

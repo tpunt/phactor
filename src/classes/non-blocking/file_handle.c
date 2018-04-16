@@ -26,7 +26,6 @@
 #include "src/classes/non-blocking/file_handle.h"
 
 extern ph_actor_system_t *actor_system;
-extern __thread int thread_offset;
 
 zend_object_handlers ph_FileHandle_handlers;
 zend_class_entry *ph_FileHandle_ce;
@@ -36,7 +35,7 @@ ph_file_handle_t *ph_file_handle_retrieve_from_object(zend_object *file_handle_o
     return (ph_file_handle_t *)((char *)file_handle_obj - file_handle_obj->handlers->offset);
 }
 
-void ph_open_file(uv_fs_t* req)
+void ph_file_open(uv_fs_t* req)
 {
     if (req->result < 0) { // http://www-numi.fnal.gov/offline_software/srt_public_context/WebDocs/Errors/unix_system_errors.html
         switch (req->result) {
@@ -46,13 +45,6 @@ void ph_open_file(uv_fs_t* req)
             default:
                 zend_throw_exception_ex(NULL, 0, "Cannot open file because UNKNOWN (%d).", req->result);
         }
-    } else {
-        // file_handler_t *fh = (file_handler_t *) req;
-
-        // uv_pipe_init(el->loop, &fh->file_pipe, 0);
-        // uv_pipe_open(&fh->file_pipe, req->result);
-
-        // uv_read_start((uv_stream_t *) &fh->file_pipe, alloc_buffer, fs_read_cb);
     }
 
     ph_file_handle_t *fh = (ph_file_handle_t *)req;
@@ -61,17 +53,87 @@ void ph_open_file(uv_fs_t* req)
     ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &fh->actor_ref);
     pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-    // assert(actor->thread_offset == thread_offset);
+    // There's no race condition here, since only the thread that created the
+    // actor can free it
+    if (actor) {
+        // we need some more checks here - such as a "version number" of an actor
+        // e.g. if the actor gets restarted from the point of the previous interruption
+        // then this actor should not be resumed
+
+        pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
+        ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
+        pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
+    }
+}
+
+void ph_file_stat(uv_fs_t* req)
+{
+    ph_file_handle_t *fh = (ph_file_handle_t *)req;
+
+    if (req->result < 0) {
+        zend_throw_exception_ex(NULL, 0, "An error occurred when reading the file's stats (%d).", req->result);
+    } else {
+        fh->file_size = req->statbuf.st_size;
+    }
+
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &fh->actor_ref);
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
     // There's no race condition here, since only the thread that created the
     // actor can free it
     if (actor) {
-        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
+        // we need some more checks here - such as a "version number" of an actor
+        // e.g. if the actor gets restarted from the point of the previous interruption
+        // then this actor should not be resumed
 
-        pthread_mutex_lock(&thread->tasks.lock);
-        ph_queue_push(&thread->tasks, ph_task_create_resume_actor(actor));
-        pthread_mutex_unlock(&thread->tasks.lock);
+        pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
+        ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
+        pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
     }
+}
+
+// void fs_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
+// {
+// 	file_handler_t *fh = (file_handler_t *) ((char *) stream - offsetof(file_handler_t, file_pipe)); // @TODO not OS portable
+//
+//     if (nread < 0) {
+//         if (nread == UV_EOF) {
+//             //uv_close((uv_handle_t *) &fh->file_pipe, NULL);
+// 			//uv_read_stop(stream);
+//         }
+//     } else {
+
+void ph_file_read(uv_fs_t* req)
+{
+    ph_file_handle_t *fh = (ph_file_handle_t *)req;
+
+    if (req->result < 0) {
+        zend_throw_exception_ex(NULL, 0, "An error occurred when reading the file's stats (%d).", req->result);
+    }
+
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &fh->actor_ref);
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+
+    // There's no race condition here, since only the thread that created the
+    // actor can free it
+    if (actor) {
+        // we need some more checks here - such as a "version number" of an actor
+        // e.g. if the actor gets restarted from the point of the previous interruption
+        // then this actor should not be resumed
+
+        pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
+        ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
+        pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
+    }
+}
+
+void ph_alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
+{
+	file_handler_t *fh = (file_handler_t *)((char *)handle - offsetof(file_handler_t, file_pipe)); // @TODO not OS portable
+
+	*buf = uv_buf_init(fh->buffer, fh->buffer_size);
 }
 
 ZEND_BEGIN_ARG_INFO_EX(FileHandle___construct_arginfo, 0, 0, 1)
@@ -89,13 +151,12 @@ PHP_METHOD(FileHandle, __construct)
     ZEND_PARSE_PARAMETERS_END();
 
     ph_file_handle_t *fh = ph_file_handle_retrieve_from_object(Z_OBJ_P(getThis()));
-    ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
 
     // @todo check for NUL byte character (file name is not NUL safe)
 
     fh->name = filename;
 
-    uv_fs_open(&thread->event_loop, (uv_fs_t *)fh, fh->name, O_ASYNC, 0, ph_open_file); // flags = unix only?
+    uv_fs_open(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, O_ASYNC, 0, ph_file_open); // flags = unix only?
 
     pthread_mutex_lock(&actor->lock);
 
@@ -104,15 +165,80 @@ PHP_METHOD(FileHandle, __construct)
 
         pthread_mutex_unlock(&actor->lock);
 
-        ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.vmc);
+        ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_ZG(ph_thread)->context.vmc);
 
 #ifdef PH_FIXED_STACK_SIZE
-        ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+        ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
 #else
-        ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+        ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
 #endif
     } else {
         pthread_mutex_unlock(&actor->lock);
+    }
+}
+
+ZEND_BEGIN_ARG_INFO_EX(FileHandle_read_arginfo, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
+PHP_METHOD(FileHandle, read)
+{
+    ph_actor_t *actor = PHACTOR_ZG(currently_executing_actor);
+
+    if (zend_parse_parameters_none() != SUCCESS) {
+        return;
+    }
+
+    ph_file_handle_t *fh = ph_file_handle_retrieve_from_object(Z_OBJ_P(getThis()));
+
+    uv_fs_stat(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, ph_file_stat);
+
+    pthread_mutex_lock(&actor->lock);
+
+    if (actor->state == PH_ACTOR_ACTIVE) {
+        actor->state = PH_ACTOR_BLOCKING;
+
+        pthread_mutex_unlock(&actor->lock);
+
+        ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_ZG(ph_thread)->context.vmc);
+
+#ifdef PH_FIXED_STACK_SIZE
+        ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
+#else
+        ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
+#endif
+    } else {
+        pthread_mutex_unlock(&actor->lock);
+    }
+
+    if (!EG(exception)) {
+        fh->buffer_size = fh->file_size;
+        fh->buffer = emalloc(fh->buffer_size);
+
+        uv_pipe_init(&PHACTOR_ZG(ph_thread)->event_loop, &fh->file_pipe, 0);
+        uv_pipe_open(&fh->file_pipe, fh->fs.result);
+        uv_read_start((uv_stream_t *) &fh->file_pipe, ph_alloc_buffer, ph_file_read);
+
+        pthread_mutex_lock(&actor->lock);
+
+        if (actor->state == PH_ACTOR_ACTIVE) {
+            actor->state = PH_ACTOR_BLOCKING;
+
+            pthread_mutex_unlock(&actor->lock);
+
+            ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_ZG(ph_thread)->context.vmc);
+
+#ifdef PH_FIXED_STACK_SIZE
+            ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
+#else
+            ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
+#endif
+        } else {
+            pthread_mutex_unlock(&actor->lock);
+        }
+
+        if (!EG(exception)) {
+            RETVAL_NEW_STR(zend_string_init(fh->buffer, fh->buffer_size, 0));
+        }
     }
 }
 
@@ -126,6 +252,7 @@ zend_object* ph_file_handle_ctor(zend_class_entry *entry)
     fh->obj.handlers = &ph_FileHandle_handlers;
 
     ph_str_copy(&fh->actor_ref, PHACTOR_ZG(currently_executing_actor)->ref);
+    fh->file_size = -1;
 
     return &fh->obj;
 }

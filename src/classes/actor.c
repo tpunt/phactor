@@ -26,7 +26,6 @@
 #include "src/classes/actor_system.h"
 
 extern ph_actor_system_t *actor_system;
-extern __thread int thread_offset;
 extern zend_class_entry *ph_ActorRef_ce;
 
 zend_object_handlers ph_Actor_handlers;
@@ -74,7 +73,7 @@ void ph_actor_remove_from_table(void *actor_void)
 void ph_actor_mark_for_removal(void *actor_void)
 {
     ph_actor_t *actor = actor_void;
-    ph_vector_t *actor_removals = PHACTOR_G(actor_system)->actor_removals + actor->thread_offset;
+    ph_vector_t *actor_removals = &actor->ph_thread->actor_removals;
 
     pthread_mutex_lock(&actor->lock);
     actor->state = PH_ACTOR_SHUTTING_DOWN;
@@ -227,21 +226,20 @@ static void receive_block(ph_actor_t *actor, zval *return_value)
 
     // @todo possible optimisation: if task queue is empty, just skip the next 7 lines
     if (ph_queue_size(&actor->mailbox)) {
-        ph_thread_t *thread = PHACTOR_G(actor_system)->worker_threads + actor->thread_offset;
         ph_task_t *task = ph_task_create_resume_actor(actor);
 
-        pthread_mutex_lock(&thread->tasks.lock);
-        ph_queue_push(&thread->tasks, task);
-        pthread_mutex_unlock(&thread->tasks.lock);
+        pthread_mutex_lock(&actor->ph_thread->tasks.lock);
+        ph_queue_push(&actor->ph_thread->tasks, task);
+        pthread_mutex_unlock(&actor->ph_thread->tasks.lock);
     }
     pthread_mutex_unlock(&actor->lock);
 
-    ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.vmc);
+    ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_ZG(ph_thread)->context.vmc);
 
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+    ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
 #else
-    ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+    ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
 #endif
 
     pthread_mutex_lock(&actor->lock);
@@ -282,7 +280,7 @@ void process_message_handler(void)
 
     EG(current_execute_data) = NULL;
 
-    ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_G(actor_system)->worker_threads[thread_offset].context.vmc);
+    ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_ZG(ph_thread)->context.vmc);
 
     if (result == FAILURE && !EG(exception)) {
         zend_error_noreturn(E_CORE_ERROR, "Couldn't execute method %s%s%s", ZSTR_VAL(object->ce->name), "::", "receive");
@@ -304,7 +302,7 @@ void process_message_handler(void)
     }
 
 #ifdef PH_FIXED_STACK_SIZE
-    ph_mcontext_set(&PHACTOR_G(actor_system)->worker_threads[thread_offset].context.mc);
+    ph_mcontext_set(&PHACTOR_ZG(ph_thread)->context.mc);
 #endif
 }
 
