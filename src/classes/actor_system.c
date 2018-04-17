@@ -239,12 +239,14 @@ void message_handling_loop(ph_thread_t *ph_thread)
                 ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &current_task->u.rat.actor_ref);
                 pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
 
-                assert(actor && actor->internal); // may change in future
+                if (actor) {
+                    assert(actor->internal); // may change in future
 
-                ph_str_value_free(&current_task->u.rat.actor_ref);
-                PHACTOR_ZG(currently_executing_actor) = actor;
+                    ph_str_value_free(&current_task->u.rat.actor_ref);
+                    PHACTOR_ZG(currently_executing_actor) = actor;
 
-                resume_actor(actor);
+                    resume_actor(actor);
+                }
                 break;
             case PH_NEW_ACTOR_TASK:
                 PHACTOR_ZG(currently_executing_actor) = new_actor(current_task);

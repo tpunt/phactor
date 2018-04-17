@@ -37,6 +37,8 @@ ph_file_handle_t *ph_file_handle_retrieve_from_object(zend_object *file_handle_o
 
 void ph_file_open(uv_fs_t* req)
 {
+    ph_file_handle_t *fh = (ph_file_handle_t *)req;
+
     if (req->result < 0) { // http://www-numi.fnal.gov/offline_software/srt_public_context/WebDocs/Errors/unix_system_errors.html
         switch (req->result) {
             case -2:
@@ -45,9 +47,9 @@ void ph_file_open(uv_fs_t* req)
             default:
                 zend_throw_exception_ex(NULL, 0, "Cannot open file because UNKNOWN (%d).", req->result);
         }
+    } else {
+        fh->fd = req->result;
     }
-
-    ph_file_handle_t *fh = (ph_file_handle_t *)req;
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
     ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &fh->actor_ref);
@@ -55,7 +57,7 @@ void ph_file_open(uv_fs_t* req)
 
     // There's no race condition here, since only the thread that created the
     // actor can free it
-    if (actor) {
+    if (actor && actor->state == PH_ACTOR_BLOCKING) {
         // we need some more checks here - such as a "version number" of an actor
         // e.g. if the actor gets restarted from the point of the previous interruption
         // then this actor should not be resumed
@@ -82,7 +84,7 @@ void ph_file_stat(uv_fs_t* req)
 
     // There's no race condition here, since only the thread that created the
     // actor can free it
-    if (actor) {
+    if (actor && actor->state == PH_ACTOR_BLOCKING) {
         // we need some more checks here - such as a "version number" of an actor
         // e.g. if the actor gets restarted from the point of the previous interruption
         // then this actor should not be resumed
@@ -93,23 +95,17 @@ void ph_file_stat(uv_fs_t* req)
     }
 }
 
-// void fs_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
-// {
-// 	file_handler_t *fh = (file_handler_t *) ((char *) stream - offsetof(file_handler_t, file_pipe)); // @TODO not OS portable
-//
-//     if (nread < 0) {
-//         if (nread == UV_EOF) {
-//             //uv_close((uv_handle_t *) &fh->file_pipe, NULL);
-// 			//uv_read_stop(stream);
-//         }
-//     } else {
-
-void ph_file_read(uv_fs_t* req)
+void ph_file_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 {
-    ph_file_handle_t *fh = (ph_file_handle_t *)req;
+    ph_file_handle_t *fh = (ph_file_handle_t *) ((char *) stream - offsetof(ph_file_handle_t, file_pipe)); // @TODO not OS portable
 
-    if (req->result < 0) {
-        zend_throw_exception_ex(NULL, 0, "An error occurred when reading the file's stats (%d).", req->result);
+    if (nread < 0) {
+        if (nread == UV_EOF) {
+            // uv_close((uv_handle_t *) &fh->file_pipe, NULL);
+            // uv_read_stop(stream);
+        } else {
+            zend_throw_exception_ex(NULL, 0, "Could not read file (%d).", nread);
+        }
     }
 
     pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
@@ -118,7 +114,7 @@ void ph_file_read(uv_fs_t* req)
 
     // There's no race condition here, since only the thread that created the
     // actor can free it
-    if (actor) {
+    if (actor && actor->state == PH_ACTOR_BLOCKING) {
         // we need some more checks here - such as a "version number" of an actor
         // e.g. if the actor gets restarted from the point of the previous interruption
         // then this actor should not be resumed
@@ -131,7 +127,7 @@ void ph_file_read(uv_fs_t* req)
 
 void ph_alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 {
-	file_handler_t *fh = (file_handler_t *)((char *)handle - offsetof(file_handler_t, file_pipe)); // @TODO not OS portable
+	ph_file_handle_t *fh = (ph_file_handle_t *)((char *)handle - offsetof(ph_file_handle_t, file_pipe)); // @TODO not OS portable
 
 	*buf = uv_buf_init(fh->buffer, fh->buffer_size);
 }
@@ -172,9 +168,13 @@ PHP_METHOD(FileHandle, __construct)
 #else
         ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
 #endif
-    } else {
-        pthread_mutex_unlock(&actor->lock);
+
+        pthread_mutex_lock(&actor->lock);
+
+        actor->state = PH_ACTOR_ACTIVE;
     }
+
+    pthread_mutex_unlock(&actor->lock);
 }
 
 ZEND_BEGIN_ARG_INFO_EX(FileHandle_read_arginfo, 0, 0, 0)
@@ -206,16 +206,24 @@ PHP_METHOD(FileHandle, read)
 #else
         ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
 #endif
-    } else {
-        pthread_mutex_unlock(&actor->lock);
+
+        pthread_mutex_lock(&actor->lock);
+
+        actor->state = PH_ACTOR_ACTIVE;
     }
 
+    pthread_mutex_unlock(&actor->lock);
+
     if (!EG(exception)) {
+        if (!fh->file_size) {
+            RETURN_EMPTY_STRING();
+        }
+
         fh->buffer_size = fh->file_size;
         fh->buffer = emalloc(fh->buffer_size);
 
         uv_pipe_init(&PHACTOR_ZG(ph_thread)->event_loop, &fh->file_pipe, 0);
-        uv_pipe_open(&fh->file_pipe, fh->fs.result);
+        uv_pipe_open(&fh->file_pipe, fh->fd);
         uv_read_start((uv_stream_t *) &fh->file_pipe, ph_alloc_buffer, ph_file_read);
 
         pthread_mutex_lock(&actor->lock);
@@ -232,9 +240,13 @@ PHP_METHOD(FileHandle, read)
 #else
             ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
 #endif
-        } else {
-            pthread_mutex_unlock(&actor->lock);
+
+            pthread_mutex_lock(&actor->lock);
+
+            actor->state = PH_ACTOR_ACTIVE;
         }
+
+        pthread_mutex_unlock(&actor->lock);
 
         if (!EG(exception)) {
             RETVAL_NEW_STR(zend_string_init(fh->buffer, fh->buffer_size, 0));
@@ -259,7 +271,7 @@ zend_object* ph_file_handle_ctor(zend_class_entry *entry)
 
 zend_function_entry FileHandle_methods[] = {
     PHP_ME(FileHandle, __construct, FileHandle___construct_arginfo, ZEND_ACC_PUBLIC)
-    // PHP_ME(FileHandle, read, FileHandle_read_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ME(FileHandle, read, FileHandle_read_arginfo, ZEND_ACC_PUBLIC)
     // PHP_ME(FileHandle, write, FileHandle_write_arginfo, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };

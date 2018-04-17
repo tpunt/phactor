@@ -29,6 +29,7 @@ typedef struct _ph_file_handle_t {
     uv_pipe_t file_pipe;
     char *name;
     char *buffer;
+    int fd;
     zend_long buffer_size;
     zend_long file_size;
     // zend_function *read_function;
