@@ -27,6 +27,7 @@ typedef struct _ph_file_handle_t {
     uv_fs_t fs;
     // uv_fs_event_t event;
     uv_pipe_t file_pipe;
+    uv_write_t write;
     char *name;
     char *buffer;
     int fd;

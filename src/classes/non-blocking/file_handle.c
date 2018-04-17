@@ -35,6 +35,21 @@ ph_file_handle_t *ph_file_handle_retrieve_from_object(zend_object *file_handle_o
     return (ph_file_handle_t *)((char *)file_handle_obj - file_handle_obj->handlers->offset);
 }
 
+void ph_fetch_and_reschedule_actor(ph_file_handle_t *fh)
+{
+    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &fh->actor_ref);
+    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+
+    // There's no race condition here, since only the thread that created the
+    // actor can free it
+    if (actor && actor->state == PH_ACTOR_BLOCKING && fh->actor_restart_count == actor->restart_count) {
+        pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
+        ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
+        pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
+    }
+}
+
 void ph_file_open(uv_fs_t* req)
 {
     ph_file_handle_t *fh = (ph_file_handle_t *)req;
@@ -51,17 +66,7 @@ void ph_file_open(uv_fs_t* req)
         fh->fd = req->result;
     }
 
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &fh->actor_ref);
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-
-    // There's no race condition here, since only the thread that created the
-    // actor can free it
-    if (actor && actor->state == PH_ACTOR_BLOCKING && fh->actor_restart_count == actor->restart_count) {
-        pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
-        ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
-        pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
-    }
+    ph_fetch_and_reschedule_actor(fh);
 }
 
 void ph_file_stat(uv_fs_t* req)
@@ -74,22 +79,12 @@ void ph_file_stat(uv_fs_t* req)
         fh->file_size = req->statbuf.st_size;
     }
 
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &fh->actor_ref);
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-
-    // There's no race condition here, since only the thread that created the
-    // actor can free it
-    if (actor && actor->state == PH_ACTOR_BLOCKING && fh->actor_restart_count == actor->restart_count) {
-        pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
-        ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
-        pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
-    }
+    ph_fetch_and_reschedule_actor(fh);
 }
 
 void ph_file_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 {
-    ph_file_handle_t *fh = (ph_file_handle_t *) ((char *) stream - offsetof(ph_file_handle_t, file_pipe)); // @TODO not OS portable
+    ph_file_handle_t *fh = (ph_file_handle_t *) ((char *) stream - offsetof(ph_file_handle_t, file_pipe));
 
     if (nread < 0) {
         if (nread == UV_EOF) {
@@ -100,22 +95,23 @@ void ph_file_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
         }
     }
 
-    pthread_mutex_lock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
-    ph_actor_t *actor = ph_hashtable_search(&PHACTOR_G(actor_system)->actors_by_ref, &fh->actor_ref);
-    pthread_mutex_unlock(&PHACTOR_G(actor_system)->actors_by_ref.lock);
+    ph_fetch_and_reschedule_actor(fh);
+}
 
-    // There's no race condition here, since only the thread that created the
-    // actor can free it
-    if (actor && actor->state == PH_ACTOR_BLOCKING && fh->actor_restart_count == actor->restart_count) {
-        pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
-        ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
-        pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
+void ph_file_write(uv_write_t *req, int status)
+{
+    ph_file_handle_t *fh = (ph_file_handle_t *)((char *)req - offsetof(ph_file_handle_t, write));
+
+    if (status < 0) {
+        zend_throw_exception_ex(NULL, 0, "Could not write to file (%d)", status);
     }
+
+    ph_fetch_and_reschedule_actor(fh);
 }
 
 void ph_alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 {
-	ph_file_handle_t *fh = (ph_file_handle_t *)((char *)handle - offsetof(ph_file_handle_t, file_pipe)); // @TODO not OS portable
+	ph_file_handle_t *fh = (ph_file_handle_t *)((char *)handle - offsetof(ph_file_handle_t, file_pipe));
 
 	*buf = uv_buf_init(fh->buffer, fh->buffer_size);
 }
@@ -166,9 +162,12 @@ PHP_METHOD(FileHandle, __construct)
     fh->name = filename;
     fh->actor_restart_count = actor->restart_count;
 
-    uv_fs_open(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, O_ASYNC, 0, ph_file_open); // flags = unix only?
-
-    ph_blocking_context_switch(actor);
+    // O_ASYNC = unix only?
+    if (!uv_fs_open(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, O_ASYNC, 0, ph_file_open)) {
+        ph_blocking_context_switch(actor);
+    } else {
+        zend_throw_exception(NULL, "Failed to begin opening the file", 0);
+    }
 }
 
 ZEND_BEGIN_ARG_INFO_EX(FileHandle_read_arginfo, 0, 0, 0)
@@ -176,39 +175,87 @@ ZEND_END_ARG_INFO()
 
 PHP_METHOD(FileHandle, read)
 {
-    ph_actor_t *actor = PHACTOR_ZG(currently_executing_actor);
-
     if (zend_parse_parameters_none() != SUCCESS) {
         return;
     }
 
     ph_file_handle_t *fh = ph_file_handle_retrieve_from_object(Z_OBJ_P(getThis()));
+    ph_actor_t *actor = PHACTOR_ZG(currently_executing_actor);
+
     fh->actor_restart_count = actor->restart_count;
 
     uv_fs_stat(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, ph_file_stat);
 
     ph_blocking_context_switch(actor);
 
-    if (!EG(exception)) {
-        if (!fh->file_size) {
-            RETURN_EMPTY_STRING();
+    if (EG(exception)) {
+        return;
+    }
+
+    if (!fh->file_size) {
+        RETURN_EMPTY_STRING();
+    }
+
+    fh->buffer_size = fh->file_size;
+    fh->buffer = emalloc(fh->buffer_size);
+
+    if (!uv_pipe_init(&PHACTOR_ZG(ph_thread)->event_loop, &fh->file_pipe, 0)) {
+        if (!uv_pipe_open(&fh->file_pipe, fh->fd)) {
+            if (!uv_read_start((uv_stream_t *)&fh->file_pipe, ph_alloc_buffer, ph_file_read)) {
+                ph_blocking_context_switch(actor);
+
+                if (!EG(exception)) {
+                    RETVAL_NEW_STR(zend_string_init(fh->buffer, fh->buffer_size, 0));
+                }
+            } else {
+                zend_throw_exception(NULL, "Failed to begin reading the file", 0);
+            }
+        } else {
+            zend_throw_exception(NULL, "Failed to open the file pipe", 0);
         }
+    } else {
+        zend_throw_exception(NULL, "Failed to initialise the file pipe", 0);
+    }
 
-        fh->buffer_size = fh->file_size;
-        fh->buffer = emalloc(fh->buffer_size);
+    efree(fh->buffer);
+    fh->buffer_size = 0;
+}
 
-        uv_pipe_init(&PHACTOR_ZG(ph_thread)->event_loop, &fh->file_pipe, 0);
-        uv_pipe_open(&fh->file_pipe, fh->fd);
-        uv_read_start((uv_stream_t *) &fh->file_pipe, ph_alloc_buffer, ph_file_read);
+ZEND_BEGIN_ARG_INFO_EX(FileHandle_write_arginfo, 0, 0, 1)
+    ZEND_ARG_INFO(0, content)
+ZEND_END_ARG_INFO()
 
-        ph_blocking_context_switch(actor);
+PHP_METHOD(FileHandle, write)
+{
+    char *content;
+    size_t length;
 
-        if (!EG(exception)) {
-            RETVAL_NEW_STR(zend_string_init(fh->buffer, fh->buffer_size, 0));
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_STRING(content, length)
+    ZEND_PARSE_PARAMETERS_END();
+
+    ph_file_handle_t *fh = ph_file_handle_retrieve_from_object(Z_OBJ_P(getThis()));
+    ph_actor_t *actor = PHACTOR_ZG(currently_executing_actor);
+    uv_buf_t buffer[1];
+
+    fh->actor_restart_count = actor->restart_count;
+    fh->buffer_size = length;
+
+    buffer[0].base = content;
+    buffer[0].len = length;
+
+    if (!uv_pipe_init(&PHACTOR_ZG(ph_thread)->event_loop, &fh->file_pipe, 0)) {
+        if (!uv_pipe_open(&fh->file_pipe, fh->fd)) {
+            if (!uv_write((uv_write_t *)&fh->write, (uv_stream_t *)&fh->file_pipe, buffer, 1, ph_file_write)) {
+                ph_blocking_context_switch(actor);
+            } else {
+                zend_throw_exception(NULL, "Failed to begin writing to the file", 0);
+            }
+        } else {
+            zend_throw_exception(NULL, "Failed to open the file pipe", 0);
         }
-
-        efree(fh->buffer);
-        fh->buffer_size = 0;
+    } else {
+        zend_throw_exception(NULL, "Failed to initialise the file pipe", 0);
     }
 }
 
@@ -230,7 +277,7 @@ zend_object* ph_file_handle_ctor(zend_class_entry *entry)
 zend_function_entry FileHandle_methods[] = {
     PHP_ME(FileHandle, __construct, FileHandle___construct_arginfo, ZEND_ACC_PUBLIC)
     PHP_ME(FileHandle, read, FileHandle_read_arginfo, ZEND_ACC_PUBLIC)
-    // PHP_ME(FileHandle, write, FileHandle_write_arginfo, ZEND_ACC_PUBLIC)
+    PHP_ME(FileHandle, write, FileHandle_write_arginfo, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 
