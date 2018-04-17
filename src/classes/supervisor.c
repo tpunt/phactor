@@ -84,6 +84,8 @@ void ph_supervisor_one_for_one(void *crashed_actor_void)
 
 void ph_supervisor_handle_crash(ph_actor_t *supervisor, ph_actor_t *crashed_actor)
 {
+    ++crashed_actor->restart_count;
+
     if (++crashed_actor->restart_count_streak == supervisor->supervision->restart_count_streak_max) {
         // @todo how should we react? Log it? Crash the supervisor?
         // default to crashing the supervisor

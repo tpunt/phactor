@@ -57,11 +57,7 @@ void ph_file_open(uv_fs_t* req)
 
     // There's no race condition here, since only the thread that created the
     // actor can free it
-    if (actor && actor->state == PH_ACTOR_BLOCKING) {
-        // we need some more checks here - such as a "version number" of an actor
-        // e.g. if the actor gets restarted from the point of the previous interruption
-        // then this actor should not be resumed
-
+    if (actor && actor->state == PH_ACTOR_BLOCKING && fh->actor_restart_count == actor->restart_count) {
         pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
         ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
         pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
@@ -84,11 +80,7 @@ void ph_file_stat(uv_fs_t* req)
 
     // There's no race condition here, since only the thread that created the
     // actor can free it
-    if (actor && actor->state == PH_ACTOR_BLOCKING) {
-        // we need some more checks here - such as a "version number" of an actor
-        // e.g. if the actor gets restarted from the point of the previous interruption
-        // then this actor should not be resumed
-
+    if (actor && actor->state == PH_ACTOR_BLOCKING && fh->actor_restart_count == actor->restart_count) {
         pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
         ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
         pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
@@ -114,11 +106,7 @@ void ph_file_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 
     // There's no race condition here, since only the thread that created the
     // actor can free it
-    if (actor && actor->state == PH_ACTOR_BLOCKING) {
-        // we need some more checks here - such as a "version number" of an actor
-        // e.g. if the actor gets restarted from the point of the previous interruption
-        // then this actor should not be resumed
-
+    if (actor && actor->state == PH_ACTOR_BLOCKING && fh->actor_restart_count == actor->restart_count) {
         pthread_mutex_lock(&PHACTOR_ZG(ph_thread)->tasks.lock);
         ph_queue_push(&PHACTOR_ZG(ph_thread)->tasks, ph_task_create_resume_actor(actor));
         pthread_mutex_unlock(&PHACTOR_ZG(ph_thread)->tasks.lock);
@@ -176,6 +164,7 @@ PHP_METHOD(FileHandle, __construct)
     // @todo check for NUL byte character (file name is not NUL safe)
 
     fh->name = filename;
+    fh->actor_restart_count = actor->restart_count;
 
     uv_fs_open(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, O_ASYNC, 0, ph_file_open); // flags = unix only?
 
@@ -194,6 +183,7 @@ PHP_METHOD(FileHandle, read)
     }
 
     ph_file_handle_t *fh = ph_file_handle_retrieve_from_object(Z_OBJ_P(getThis()));
+    fh->actor_restart_count = actor->restart_count;
 
     uv_fs_stat(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, ph_file_stat);
 

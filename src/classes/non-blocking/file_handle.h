@@ -35,6 +35,7 @@ typedef struct _ph_file_handle_t {
     // zend_function *read_function;
     // zend_function *monitor_function;
     ph_string_t actor_ref;
+    int actor_restart_count; // maintains actor version number
     zend_object obj;
 } ph_file_handle_t;
 

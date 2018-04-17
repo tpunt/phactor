@@ -199,6 +199,7 @@ ph_actor_t *ph_actor_create(ph_string_t *name, ph_string_t *ref, ph_string_t *cl
     new_actor->ctor_args = ctor_args;
     new_actor->ctor_argc = ctor_argc;
     new_actor->restart_count_streak = 0;
+    new_actor->restart_count = 0;
     new_actor->tree_number = -1;
 
     ph_queue_init(&new_actor->mailbox, ph_msg_free);

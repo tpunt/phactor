@@ -55,6 +55,7 @@ typedef struct _ph_actor_t {
     struct _ph_thread_t *ph_thread;
     ph_actor_state_t state;
     int restart_count_streak;
+    int restart_count;
     int tree_number;
     struct _ph_actor_t *supervisor;
     ph_supervision_t *supervision;
