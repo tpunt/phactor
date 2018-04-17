@@ -132,28 +132,8 @@ void ph_alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 	*buf = uv_buf_init(fh->buffer, fh->buffer_size);
 }
 
-ZEND_BEGIN_ARG_INFO_EX(FileHandle___construct_arginfo, 0, 0, 1)
-    ZEND_ARG_INFO(0, fileName)
-ZEND_END_ARG_INFO()
-
-PHP_METHOD(FileHandle, __construct)
+void ph_blocking_context_switch(ph_actor_t *actor)
 {
-    ph_actor_t *actor = PHACTOR_ZG(currently_executing_actor);
-    char *filename;
-    size_t length;
-
-    ZEND_PARSE_PARAMETERS_START(1, 1)
-        Z_PARAM_STRING(filename, length)
-    ZEND_PARSE_PARAMETERS_END();
-
-    ph_file_handle_t *fh = ph_file_handle_retrieve_from_object(Z_OBJ_P(getThis()));
-
-    // @todo check for NUL byte character (file name is not NUL safe)
-
-    fh->name = filename;
-
-    uv_fs_open(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, O_ASYNC, 0, ph_file_open); // flags = unix only?
-
     pthread_mutex_lock(&actor->lock);
 
     if (actor->state == PH_ACTOR_ACTIVE) {
@@ -177,6 +157,31 @@ PHP_METHOD(FileHandle, __construct)
     pthread_mutex_unlock(&actor->lock);
 }
 
+ZEND_BEGIN_ARG_INFO_EX(FileHandle___construct_arginfo, 0, 0, 1)
+    ZEND_ARG_INFO(0, fileName)
+ZEND_END_ARG_INFO()
+
+PHP_METHOD(FileHandle, __construct)
+{
+    ph_actor_t *actor = PHACTOR_ZG(currently_executing_actor);
+    char *filename;
+    size_t length;
+
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_STRING(filename, length)
+    ZEND_PARSE_PARAMETERS_END();
+
+    ph_file_handle_t *fh = ph_file_handle_retrieve_from_object(Z_OBJ_P(getThis()));
+
+    // @todo check for NUL byte character (file name is not NUL safe)
+
+    fh->name = filename;
+
+    uv_fs_open(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, O_ASYNC, 0, ph_file_open); // flags = unix only?
+
+    ph_blocking_context_switch(actor);
+}
+
 ZEND_BEGIN_ARG_INFO_EX(FileHandle_read_arginfo, 0, 0, 0)
 ZEND_END_ARG_INFO()
 
@@ -192,27 +197,7 @@ PHP_METHOD(FileHandle, read)
 
     uv_fs_stat(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, ph_file_stat);
 
-    pthread_mutex_lock(&actor->lock);
-
-    if (actor->state == PH_ACTOR_ACTIVE) {
-        actor->state = PH_ACTOR_BLOCKING;
-
-        pthread_mutex_unlock(&actor->lock);
-
-        ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_ZG(ph_thread)->context.vmc);
-
-#ifdef PH_FIXED_STACK_SIZE
-        ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
-#else
-        ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
-#endif
-
-        pthread_mutex_lock(&actor->lock);
-
-        actor->state = PH_ACTOR_ACTIVE;
-    }
-
-    pthread_mutex_unlock(&actor->lock);
+    ph_blocking_context_switch(actor);
 
     if (!EG(exception)) {
         if (!fh->file_size) {
@@ -226,27 +211,7 @@ PHP_METHOD(FileHandle, read)
         uv_pipe_open(&fh->file_pipe, fh->fd);
         uv_read_start((uv_stream_t *) &fh->file_pipe, ph_alloc_buffer, ph_file_read);
 
-        pthread_mutex_lock(&actor->lock);
-
-        if (actor->state == PH_ACTOR_ACTIVE) {
-            actor->state = PH_ACTOR_BLOCKING;
-
-            pthread_mutex_unlock(&actor->lock);
-
-            ph_vmcontext_swap(&actor->internal->context.vmc, &PHACTOR_ZG(ph_thread)->context.vmc);
-
-#ifdef PH_FIXED_STACK_SIZE
-            ph_mcontext_swap(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
-#else
-            ph_mcontext_interrupt(&actor->internal->context.mc, &PHACTOR_ZG(ph_thread)->context.mc);
-#endif
-
-            pthread_mutex_lock(&actor->lock);
-
-            actor->state = PH_ACTOR_ACTIVE;
-        }
-
-        pthread_mutex_unlock(&actor->lock);
+        ph_blocking_context_switch(actor);
 
         if (!EG(exception)) {
             RETVAL_NEW_STR(zend_string_init(fh->buffer, fh->buffer_size, 0));
