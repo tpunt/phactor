@@ -42,10 +42,10 @@ void ph_file_open(uv_fs_t* req)
     if (req->result < 0) { // http://www-numi.fnal.gov/offline_software/srt_public_context/WebDocs/Errors/unix_system_errors.html
         switch (req->result) {
             case -2:
-                zend_throw_exception_ex(NULL, 0, "Cannot open file because it does not exist.");
+                zend_throw_exception_ex(NULL, 0, "Cannot open file because it does not exist");
                 break;
             default:
-                zend_throw_exception_ex(NULL, 0, "Cannot open file because UNKNOWN (%d).", req->result);
+                zend_throw_exception_ex(NULL, 0, "Cannot open file because UNKNOWN (%d)", req->result);
         }
     } else {
         fh->fd = req->result;
@@ -69,7 +69,7 @@ void ph_file_stat(uv_fs_t* req)
     ph_file_handle_t *fh = (ph_file_handle_t *)req;
 
     if (req->result < 0) {
-        zend_throw_exception_ex(NULL, 0, "An error occurred when reading the file's stats (%d).", req->result);
+        zend_throw_exception_ex(NULL, 0, "An error occurred when reading the file's stats (%d)", req->result);
     } else {
         fh->file_size = req->statbuf.st_size;
     }
@@ -93,10 +93,10 @@ void ph_file_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 
     if (nread < 0) {
         if (nread == UV_EOF) {
-            // uv_close((uv_handle_t *) &fh->file_pipe, NULL);
-            // uv_read_stop(stream);
+            uv_close((uv_handle_t *)&fh->file_pipe, NULL);
+            uv_read_stop(stream);
         } else {
-            zend_throw_exception_ex(NULL, 0, "Could not read file (%d).", nread);
+            zend_throw_exception_ex(NULL, 0, "Could not read file (%d)", nread);
         }
     }
 
