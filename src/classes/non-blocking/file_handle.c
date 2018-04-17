@@ -206,6 +206,9 @@ PHP_METHOD(FileHandle, read)
         if (!EG(exception)) {
             RETVAL_NEW_STR(zend_string_init(fh->buffer, fh->buffer_size, 0));
         }
+
+        efree(fh->buffer);
+        fh->buffer_size = 0;
     }
 }
 
