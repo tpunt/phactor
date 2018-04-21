@@ -225,7 +225,7 @@ PHP_METHOD(FileHandle, write)
     fh->actor_restart_count = actor->restart_count;
     buffer[0] = uv_buf_init(content, length);
 
-    if (!uv_fs_write(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, (uv_file)fh->fd, buffer, 1, 0, ph_file_write)) {
+    if (!uv_fs_write(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->fd, buffer, 1, -1, ph_file_write)) {
         ph_blocking_context_switch(actor);
     } else {
         zend_throw_exception(NULL, "Failed to begin writing to the file", 0);
