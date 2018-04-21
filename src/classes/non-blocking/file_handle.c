@@ -79,41 +79,34 @@ void ph_file_stat(uv_fs_t* req)
         fh->file_size = req->statbuf.st_size;
     }
 
+    uv_fs_req_cleanup(req);
     ph_fetch_and_reschedule_actor(fh);
 }
 
-void ph_file_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
+void ph_file_read(uv_fs_t* req)
 {
-    ph_file_handle_t *fh = (ph_file_handle_t *) ((char *) stream - offsetof(ph_file_handle_t, file_pipe));
+    ph_file_handle_t *fh = (ph_file_handle_t *)req;
 
-    if (nread < 0) {
-        if (nread == UV_EOF) {
+    if (req->result < 0 ) {
+        if (req->result == UV_EOF) {
             uv_close((uv_handle_t *)&fh->file_pipe, NULL);
-            uv_read_stop(stream);
         } else {
-            zend_throw_exception_ex(NULL, 0, "Could not read file (%d)", nread);
+            zend_throw_exception_ex(NULL, 0, "Could not read file (%d)", req->result);
         }
     }
 
+    uv_fs_req_cleanup(req);
     ph_fetch_and_reschedule_actor(fh);
 }
 
-void ph_file_write(uv_write_t *req, int status)
+void ph_file_write(uv_fs_t* req)
 {
-    ph_file_handle_t *fh = (ph_file_handle_t *)((char *)req - offsetof(ph_file_handle_t, write));
-
-    if (status < 0) {
-        zend_throw_exception_ex(NULL, 0, "Could not write to file (%d)", status);
+    if (req->result < 0) {
+        zend_throw_exception_ex(NULL, 0, "Could not write to file (%d)", req->result);
     }
 
-    ph_fetch_and_reschedule_actor(fh);
-}
-
-void ph_alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
-{
-	ph_file_handle_t *fh = (ph_file_handle_t *)((char *)handle - offsetof(ph_file_handle_t, file_pipe));
-
-	*buf = uv_buf_init(fh->buffer, fh->buffer_size);
+    uv_fs_req_cleanup(req);
+    ph_fetch_and_reschedule_actor((ph_file_handle_t *)req);
 }
 
 void ph_blocking_context_switch(ph_actor_t *actor)
@@ -196,29 +189,25 @@ PHP_METHOD(FileHandle, read)
         RETURN_EMPTY_STRING();
     }
 
+    uv_buf_t buffer[1];
+
     fh->buffer_size = fh->file_size;
     fh->buffer = emalloc(fh->buffer_size);
+    buffer[0] = uv_buf_init(fh->buffer, fh->buffer_size);
 
-    if (!uv_pipe_init(&PHACTOR_ZG(ph_thread)->event_loop, &fh->file_pipe, 0)) {
-        if (!uv_pipe_open(&fh->file_pipe, fh->fd)) {
-            if (!uv_read_start((uv_stream_t *)&fh->file_pipe, ph_alloc_buffer, ph_file_read)) {
-                ph_blocking_context_switch(actor);
+    if (!uv_fs_read(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, (uv_file)fh->fd, buffer, 1, 0, ph_file_read)) {
+        ph_blocking_context_switch(actor);
 
-                if (!EG(exception)) {
-                    RETVAL_NEW_STR(zend_string_init(fh->buffer, fh->buffer_size, 0));
-                }
-            } else {
-                zend_throw_exception(NULL, "Failed to begin reading the file", 0);
-            }
-        } else {
-            zend_throw_exception(NULL, "Failed to open the file pipe", 0);
+        if (!EG(exception)) {
+            RETVAL_NEW_STR(zend_string_init(fh->buffer, fh->buffer_size, 0));
         }
     } else {
-        zend_throw_exception(NULL, "Failed to initialise the file pipe", 0);
+        zend_throw_exception(NULL, "Failed to begin reading the file", 0);
     }
 
     efree(fh->buffer);
     fh->buffer_size = 0;
+    fh->buffer = NULL;
 }
 
 ZEND_BEGIN_ARG_INFO_EX(FileHandle_write_arginfo, 0, 0, 1)
@@ -239,23 +228,12 @@ PHP_METHOD(FileHandle, write)
     uv_buf_t buffer[1];
 
     fh->actor_restart_count = actor->restart_count;
-    fh->buffer_size = length;
+    buffer[0] = uv_buf_init(content, length);
 
-    buffer[0].base = content;
-    buffer[0].len = length;
-
-    if (!uv_pipe_init(&PHACTOR_ZG(ph_thread)->event_loop, &fh->file_pipe, 0)) {
-        if (!uv_pipe_open(&fh->file_pipe, fh->fd)) {
-            if (!uv_write((uv_write_t *)&fh->write, (uv_stream_t *)&fh->file_pipe, buffer, 1, ph_file_write)) {
-                ph_blocking_context_switch(actor);
-            } else {
-                zend_throw_exception(NULL, "Failed to begin writing to the file", 0);
-            }
-        } else {
-            zend_throw_exception(NULL, "Failed to open the file pipe", 0);
-        }
+    if (!uv_fs_write(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, (uv_file)fh->fd, buffer, 1, 0, ph_file_write)) {
+        ph_blocking_context_switch(actor);
     } else {
-        zend_throw_exception(NULL, "Failed to initialise the file pipe", 0);
+        zend_throw_exception(NULL, "Failed to begin writing to the file", 0);
     }
 }
 
