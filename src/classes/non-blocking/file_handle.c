@@ -54,9 +54,9 @@ void ph_file_open(uv_fs_t* req)
 {
     ph_file_handle_t *fh = (ph_file_handle_t *)req;
 
-    if (req->result < 0) { // http://www-numi.fnal.gov/offline_software/srt_public_context/WebDocs/Errors/unix_system_errors.html
+    if (req->result < 0) {
         switch (req->result) {
-            case -2:
+            case UV_ENOENT:
                 zend_throw_exception_ex(NULL, 0, "Cannot open file because it does not exist");
                 break;
             default:
@@ -151,7 +151,6 @@ PHP_METHOD(FileHandle, __construct)
     fh->name = filename;
     fh->actor_restart_count = actor->restart_count;
 
-    // O_ASYNC = unix only?
     if (!uv_fs_open(&PHACTOR_ZG(ph_thread)->event_loop, (uv_fs_t *)fh, fh->name, O_ASYNC, 0, ph_file_open)) {
         ph_blocking_context_switch(actor);
     } else {
