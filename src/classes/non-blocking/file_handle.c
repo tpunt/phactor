@@ -87,12 +87,8 @@ void ph_file_read(uv_fs_t* req)
 {
     ph_file_handle_t *fh = (ph_file_handle_t *)req;
 
-    if (req->result < 0 ) {
-        if (req->result == UV_EOF) {
-            uv_close((uv_handle_t *)&fh->file_pipe, NULL);
-        } else {
-            zend_throw_exception_ex(NULL, 0, "Could not read file (%d)", req->result);
-        }
+    if (req->result < 0 && req->result != UV_EOF) {
+        zend_throw_exception_ex(NULL, 0, "Could not read file (%d)", req->result);
     }
 
     uv_fs_req_cleanup(req);
